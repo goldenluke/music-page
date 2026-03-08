@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+/* O resto do seu CSS customizado abaixo */
+body {
+  background-color: #050608;
+  color: white;
+  margin: 0;
+  font-family: sans-serif;
+}
+
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
