@@ -2,13 +2,15 @@ from django.contrib import admin
 from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
-from music.api import api # Importa a instância da sua API Ninja
+from music.api import api # Importa a instância da sua API
+from django.http import HttpResponse
+
+def home(request):
+    return HttpResponse("Music Page API está rodando 🚀")
 
 urlpatterns = [
-    # Rota para o painel administrativo do Django
+    path('', home),
     path('admin/', admin.site.urls),
-    
-    # Rota base para todos os endpoints da sua API (ex: /api/posts, /api/login)
     path("api/", api.urls),
 ]
 
