@@ -240,7 +240,7 @@ pull request
 
 Projeto open source.
 
-Licença a definir.
+Licença MIT.
 
 ---
 
