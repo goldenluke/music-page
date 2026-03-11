@@ -1,64 +1,107 @@
-import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
-import { useTranslation } from 'react-i18next';
-import { Filter } from 'lucide-react';
-import { useRef } from 'react';
+import { useQuery } from '@tanstack/react-query'
+import axios from 'axios'
+import { useTranslation } from 'react-i18next'
+import { Filter } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
 
 export default function GenreFilter({ activeGenre, onSelect }) {
-  const { t } = useTranslation();
-  const scrollRef = useRef(null);
+
+  const { t } = useTranslation()
+
+  const [query, setQuery] = useState("")
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef(null)
 
   const { data: genresData } = useQuery({
     queryKey: ['genres'],
     queryFn: () => axios.get('/genres').then(res => res.data),
                                         staleTime: 1000 * 60 * 10,
-  });
+  })
 
-  // GARANTIA: Se genresData não for uma lista, tratamos como lista vazia
-  const genres = Array.isArray(genresData) ? genresData : [];
+  useEffect(() => {
+
+    function handleClickOutside(event) {
+
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setOpen(false)
+      }
+
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+
+  }, [])
+
+  const genres = Array.isArray(genresData) ? genresData : []
+
+  const filtered = genres.filter(g =>
+  g.name.toLowerCase().includes(query.toLowerCase())
+  )
 
   return (
-    <div className="relative w-full max-w-full mb-8 group">
-    <div className="flex items-center bg-[#0f1115]/50 border border-white/5 rounded-2xl p-1.5 backdrop-blur-sm">
 
-    <div className="px-3 border-r border-white/5 text-slate-500">
-    <Filter size={14} />
-    </div>
+    <div ref={containerRef} className="relative w-full mb-8 max-w-xl">
 
-    <div
-    ref={scrollRef}
-    className="flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth px-3 w-full"
-    style={{ minWidth: 0 }}
-    >
-    <button
-    onClick={() => onSelect(null)}
-    className={`shrink-0 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-      !activeGenre
-      ? 'bg-blue-600 text-white shadow-lg'
-      : 'text-slate-500 hover:text-slate-300'
-    }`}
-    >
-    {t('all')}
-    </button>
+    <div className="flex items-center gap-3 bg-white/80 dark:bg-[#0f1115] border border-white/10 rounded-2xl px-4 py-2 backdrop-blur">
 
-    {/* MAP CORRIGIDO COM VERIFICAÇÃO */}
-    {genres.map((genre) => (
+    <Filter size={16} className="text-slate-500"/>
+
+    <input
+    type="text"
+    placeholder={t("search_genre", "Buscar gênero")}
+    value={query}
+    onChange={(e)=>{
+      setQuery(e.target.value)
+      setOpen(true)
+    }}
+    onFocus={()=>setOpen(true)}
+    className="bg-transparent outline-none flex-1 text-sm"
+    />
+
+    {activeGenre && (
       <button
-      key={genre.id} // Chave única
-      onClick={() => onSelect(genre.slug)}
-      className={`shrink-0 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all border ${
-        activeGenre === genre.slug
-        ? 'bg-blue-600 border-blue-600 text-white'
-        : 'bg-transparent border-transparent text-slate-500 hover:bg-white/5 hover:text-slate-200'
-      }`}
+      onClick={()=>{
+        onSelect(null)
+        setQuery("")
+      }}
+      className="text-xs text-green-500 font-bold"
       >
-      {genre.name}
+      clear
       </button>
-    ))}
+    )}
+
     </div>
 
-    <div className="absolute right-2 top-1/2 -translate-y-1/2 w-12 h-8 bg-gradient-to-l from-[#0f1115] to-transparent pointer-events-none rounded-r-2xl"></div>
+    {open && filtered.length > 0 && (
+
+      <div className="absolute w-full mt-2 bg-white dark:bg-[#0f1115] border border-white/10 rounded-xl shadow-xl max-h-60 overflow-y-auto z-50">
+
+      {filtered.map((genre)=>(
+        <button
+        key={genre.id}
+        onClick={()=>{
+          onSelect(genre.slug)
+          setQuery(genre.name)
+          setOpen(false)
+        }}
+        className={`w-full text-left px-4 py-2 text-sm hover:bg-green-600/20 transition ${
+          activeGenre === genre.slug ? "text-green-500 font-bold" : ""
+        }`}
+        >
+        {genre.name}
+        </button>
+      ))}
+
+      </div>
+
+    )}
+
     </div>
-    </div>
-  );
+
+  )
+
 }

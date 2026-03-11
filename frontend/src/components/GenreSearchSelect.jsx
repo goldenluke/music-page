@@ -21,12 +21,12 @@ export default function GenreSearchSelect({ genres, selectedId, onSelect }) {
       {/* Gatilho / Campo de Texto */}
       <div 
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full h-full bg-black/40 border border-white/5 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:border-blue-500 transition-all group"
+        className="w-full h-full bg-black/40 border border-white/5 p-4 rounded-2xl flex items-center justify-between cursor-pointer hover:border-green-500 transition-all group"
       >
         <span className={selectedGenre ? "text-white text-sm" : "text-slate-500 text-sm"}>
           {selectedGenre ? selectedGenre.name : t('select_genre', 'Buscar Gênero...')}
         </span>
-        <ChevronDown size={18} className={`text-slate-600 group-hover:text-blue-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown size={18} className={`text-slate-600 group-hover:text-green-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </div>
 
       {/* Dropdown de Busca */}
@@ -53,7 +53,7 @@ export default function GenreSearchSelect({ genres, selectedId, onSelect }) {
                     setIsOpen(false);
                     setSearch('');
                   }}
-                  className="p-4 flex items-center justify-between hover:bg-blue-600 transition-colors cursor-pointer group"
+                  className="p-4 flex items-center justify-between hover:bg-green-600 transition-colors cursor-pointer group"
                 >
                   <span className="text-sm font-bold text-slate-300 group-hover:text-white">{g.name}</span>
                   {selectedId === g.id && <Check size={16} className="text-white" />}

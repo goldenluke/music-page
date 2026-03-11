@@ -9,9 +9,70 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import Post, Vote, Genre, Comment, SavedPost, Profile, Notification, Sub
 from typing import List, Optional
+from django.db.models import F
+from django.db.models.functions import Now
+
 
 # Inicialização da API
 api = NinjaAPI()
+
+from ninja import Schema
+
+class ArtistSchema(Schema):
+
+    id: int
+    name: str
+    slug: str
+
+@api.get("/artists/{slug}")
+def get_artist(request, slug: str):
+
+    artist = Artist.objects.get(slug=slug)
+
+    posts = Post.objects.filter(artist=artist).order_by("-score")[:20]
+
+    genres = artist.genres.all()
+
+    related_artists = Artist.objects.filter(
+        genres__in=genres
+    ).exclude(id=artist.id).distinct()[:10]
+
+    subs = Sub.objects.filter(posts__artist=artist).distinct()[:10]
+
+    return {
+
+        "artist": {
+            "name": artist.name,
+            "slug": artist.slug
+        },
+
+        "posts": [
+
+            {
+                "id": p.id,
+                "title": p.title,
+                "score": p.score
+            }
+
+            for p in posts
+        ],
+
+        "genres": [
+            g.name for g in genres
+        ],
+
+        "related_artists": [
+            {
+                "name": a.name,
+                "slug": a.slug
+            }
+            for a in related_artists
+        ],
+
+        "subs": [
+            s.slug for s in subs
+        ]
+    }
 
 # --- 1. SCHEMAS (Definições de Dados) ---
 
@@ -184,24 +245,39 @@ def join_sub(request, slug: str):
 
 @api.get("/posts", response=List[PostSchema])
 def list_posts(
-    request, 
-    sort: str = "latest", 
-    search: Optional[str] = None, 
+    request,
+    sort: str = "latest",
+    search: Optional[str] = None,
     genre: Optional[str] = None,
     sub_slug: Optional[str] = None,
     limit: int = 10,
     offset: int = 0
 ):
+
     posts = Post.objects.all()
+
     if search:
         posts = posts.filter(title__icontains=search)
+
     if genre:
         posts = posts.filter(genre__slug=genre)
+
     if sub_slug:
         posts = posts.filter(sub__slug=sub_slug)
-    
-    order = '-score' if sort == 'top' else '-created_at'
-    return posts.order_by(order)[offset : offset + limit]
+
+    # Ordenação
+    if sort == "top":
+        posts = posts.order_by("-score")
+
+    elif sort == "trending":
+        posts = posts.annotate(
+            age_hours=(Now() - F("created_at"))
+        ).order_by("-score", "-created_at")
+
+    else:
+        posts = posts.order_by("-created_at")
+
+    return posts[offset: offset + limit]
 
 @api.post("/posts", auth=django_auth)
 def create_post(

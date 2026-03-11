@@ -6,7 +6,7 @@ import App from './App.jsx'
 import ProfilePage from './pages/ProfilePage.jsx' // Certifique-se de criar este arquivo
 import './index.css'
 import './i18n' // Importa a configuração de idiomas
-
+import ArtistPage from "./pages/ArtistPage"
 
 // 1. Instância do cliente de cache (React Query)
 const queryClient = new QueryClient()
@@ -26,6 +26,7 @@ root.render(
   <Route path="/s/:subSlug" element={<App />} />
   {/* Rota de Perfil: u/username */}
   <Route path="/profile/:username" element={<ProfilePage />} />
+  <Route path="/artist/:slug" element={<ArtistPage />} />
   </Routes>
   </BrowserRouter>
   </QueryClientProvider>

@@ -54,7 +54,7 @@ export default function ProfilePage() {
   const isLoadingContent = activeTab === 'posts' ? isLoadingPosts : isLoadingSaved;
 
   return (
-    <div className="min-h-screen bg-[#050608] text-slate-200 font-sans selection:bg-blue-500/30">
+    <div className="min-h-screen bg-[#050608] text-slate-200 font-sans selection:bg-green-500/30">
     <div className="max-w-5xl mx-auto px-6 py-12">
 
     {/* Botão Voltar */}
@@ -62,7 +62,7 @@ export default function ProfilePage() {
     to="/"
     className="inline-flex items-center gap-2 text-slate-500 hover:text-white mb-10 transition-all font-black text-[10px] uppercase tracking-[0.2em] group"
     >
-    <div className="p-2 bg-white/5 rounded-xl group-hover:bg-blue-600 transition-colors">
+    <div className="p-2 bg-white/5 rounded-xl group-hover:bg-green-600 transition-colors">
     <ArrowLeft size={16} />
     </div>
     {t('back_to_feed', 'Back to Feed')}
@@ -70,11 +70,11 @@ export default function ProfilePage() {
 
     {/* CABEÇALHO DO PERFIL */}
     <header className="bg-[#0f1115] border border-white/5 p-8 md:p-12 rounded-[48px] mb-12 shadow-2xl relative overflow-hidden">
-    <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/5 rounded-full blur-[100px] -mr-32 -mt-32"></div>
+    <div className="absolute top-0 right-0 w-64 h-64 bg-green-600/5 rounded-full blur-[100px] -mr-32 -mt-32"></div>
 
     <div className="relative z-10 flex flex-col md:flex-row items-center gap-10">
     {/* Avatar Grande */}
-    <div className="w-32 h-32 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[40px] flex items-center justify-center shadow-2xl shadow-blue-600/20 rotate-3">
+    <div className="w-32 h-32 bg-gradient-to-br from-green-600 to-indigo-700 rounded-[40px] flex items-center justify-center shadow-2xl shadow-green-600/20 rotate-3">
     <User size={60} className="text-white -rotate-3" />
     </div>
 
@@ -86,7 +86,7 @@ export default function ProfilePage() {
     <div className="flex flex-wrap justify-center md:justify-start gap-8">
     <div className="flex flex-col">
     <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">{t('karma', 'Karma')}</span>
-    <span className="text-xl font-black text-blue-500 flex items-center gap-2">
+    <span className="text-xl font-black text-green-500 flex items-center gap-2">
     <Zap size={20} fill="currentColor" /> {profile?.karma || 0}
     </span>
     </div>
@@ -107,22 +107,22 @@ export default function ProfilePage() {
     <button
     onClick={() => setActiveTab('posts')}
     className={`flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] pb-4 transition-all relative ${
-      activeTab === 'posts' ? 'text-blue-500' : 'text-slate-500 hover:text-white'
+      activeTab === 'posts' ? 'text-green-500' : 'text-slate-500 hover:text-white'
     }`}
     >
     <LayoutGrid size={18} /> {t('my_posts', 'Postagens')}
-    {activeTab === 'posts' && <span className="absolute bottom-[-1px] left-0 w-full h-1 bg-blue-500 rounded-full animate-in fade-in"></span>}
+    {activeTab === 'posts' && <span className="absolute bottom-[-1px] left-0 w-full h-1 bg-green-500 rounded-full animate-in fade-in"></span>}
     </button>
 
     {isOwnProfile && (
       <button
       onClick={() => setActiveTab('saved')}
       className={`flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] pb-4 transition-all relative ${
-        activeTab === 'saved' ? 'text-blue-500' : 'text-slate-500 hover:text-white'
+        activeTab === 'saved' ? 'text-green-500' : 'text-slate-500 hover:text-white'
       }`}
       >
       <Bookmark size={18} /> {t('my_library', 'Biblioteca')}
-      {activeTab === 'saved' && <span className="absolute bottom-[-1px] left-0 w-full h-1 bg-blue-500 rounded-full animate-in fade-in"></span>}
+      {activeTab === 'saved' && <span className="absolute bottom-[-1px] left-0 w-full h-1 bg-green-500 rounded-full animate-in fade-in"></span>}
       </button>
     )}
     </div>

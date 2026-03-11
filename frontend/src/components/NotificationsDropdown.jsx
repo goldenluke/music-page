@@ -15,7 +15,7 @@ export default function NotificationsDropdown({ notifications }) {
   return (
     <div className="absolute right-0 mt-3 w-80 bg-[#0f1115] border border-white/10 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden z-[120] animate-in zoom-in-95 duration-200">
       <div className="p-5 border-b border-white/5 flex justify-between items-center bg-white/5">
-        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-500 italic">
+        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-green-500 italic">
           {t('notifications', 'Notificações')}
         </h4>
         <button 
@@ -32,9 +32,9 @@ export default function NotificationsDropdown({ notifications }) {
           notifications.map((n) => (
             <div 
               key={n.id} 
-              className={`p-4 border-b border-white/5 flex gap-4 hover:bg-white/5 transition-colors ${!n.is_read ? 'bg-blue-600/5' : 'opacity-60'}`}
+              className={`p-4 border-b border-white/5 flex gap-4 hover:bg-white/5 transition-colors ${!n.is_read ? 'bg-green-600/5' : 'opacity-60'}`}
             >
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${n.notification_type === 'vote' ? 'bg-blue-600/20 text-blue-500' : 'bg-purple-600/20 text-purple-500'}`}>
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${n.notification_type === 'vote' ? 'bg-green-600/20 text-green-500' : 'bg-purple-600/20 text-purple-500'}`}>
                 {n.notification_type === 'vote' ? <ArrowBigUp size={18} fill="currentColor"/> : <MessageSquare size={16} />}
               </div>
               <div>
@@ -46,7 +46,7 @@ export default function NotificationsDropdown({ notifications }) {
                   "{n.post_title}"
                 </p>
               </div>
-              {!n.is_read && <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-2 shrink-0 animate-pulse"></div>}
+              {!n.is_read && <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2 shrink-0 animate-pulse"></div>}
             </div>
           ))
         ) : (

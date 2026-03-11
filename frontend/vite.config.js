@@ -4,20 +4,30 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+
                             server: {
-                              port: 3000,
-                              host: true, // Permite acesso via NoIP/Ngrok
+                              port: 3001,
+                              host: true,
+
+                              // Permite acesso via ngrok
+                              allowedHosts: [
+                                "labsus.ngrok-free.app",
+                                "musicpage.ngrok-free.app",
+                                "musicabrchat.ngrok-free.app"
+                              ],
+
                               proxy: {
-                                // Tudo que for /api vai para o Django
+                                // API Django
                                 '/api': {
-                                  target: 'http://127.0.0.1:8000',
+                                  target: 'http://127.0.0.1:8001',
                             changeOrigin: true,
                                 },
-                                // Tudo que for /media (imagens) vai para o Django
-                                '/media': {
-                                  target: 'http://127.0.0.1:8000',
+
+                            // Arquivos de mídia do Django
+                            '/media': {
+                              target: 'http://127.0.0.1:8001',
                             changeOrigin: true,
-                                }
+                            }
                               }
                             }
 })

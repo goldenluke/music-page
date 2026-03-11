@@ -24,7 +24,10 @@ SECRET_KEY = 'django-insecure-g*5&+8knbk74rawkv0osqpd6$&c6vku4z2x4e160k1#)y7f@9e
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "musicpage.ngrok-free.app",
+    "labsus.ngrok-free.app"
+]
 
 
 # Application definition

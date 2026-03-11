@@ -38,11 +38,11 @@ export default function Comments({ postId, user }) {
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Escreva sua opinião..."
-            className="flex-1 bg-black border border-white/10 p-2 px-4 rounded-xl text-xs outline-none focus:border-blue-500 transition-all"
+            className="flex-1 bg-black border border-white/10 p-2 px-4 rounded-xl text-xs outline-none focus:border-green-500 transition-all"
           />
           <button 
             disabled={mutation.isPending}
-            className="bg-blue-600 p-2 px-4 rounded-xl hover:bg-blue-500 transition-all disabled:opacity-50"
+            className="bg-green-600 p-2 px-4 rounded-xl hover:bg-green-500 transition-all disabled:opacity-50"
           >
             <Send size={14} />
           </button>
@@ -63,7 +63,7 @@ export default function Comments({ postId, user }) {
               </div>
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-black text-blue-500 uppercase tracking-tight">{c.author_username}</span>
+                  <span className="text-[11px] font-black text-green-500 uppercase tracking-tight">{c.author_username}</span>
                   <span className="text-[9px] font-bold text-slate-600 uppercase italic">Agora mesmo</span>
                 </div>
                 <p className="text-xs text-slate-300 leading-relaxed">{c.text}</p>

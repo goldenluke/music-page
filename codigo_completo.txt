@@ -141,7 +141,10 @@ SECRET_KEY = 'django-insecure-g*5&+8knbk74rawkv0osqpd6$&c6vku4z2x4e160k1#)y7f@9e
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "musicpage.ngrok-free.app",
+    "labsus.ngrok-free.app"
+]
 
 
 # Application definition
@@ -270,6 +273,7 @@ import os
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+
 # === Fim do arquivo: ./core/settings.py ===
 
 # === Início do arquivo: ./core/urls.py ===
@@ -278,13 +282,15 @@ from django.contrib import admin
 from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
-from music.api import api # Importa a instância da sua API Ninja
+from music.api import api # Importa a instância da sua API
+from django.http import HttpResponse
+
+def home(request):
+    return HttpResponse("Music Page API está rodando 🚀")
 
 urlpatterns = [
-    # Rota para o painel administrativo do Django
+    path('', home),
     path('admin/', admin.site.urls),
-    
-    # Rota base para todos os endpoints da sua API (ex: /api/posts, /api/login)
     path("api/", api.urls),
 ]
 
@@ -292,6 +298,7 @@ urlpatterns = [
 # Sem as linhas abaixo, o link da imagem que o Django retorna não funcionará no navegador.
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
 
 # === Fim do arquivo: ./core/urls.py ===
 
@@ -325,7 +332,7 @@ application = get_wsgi_application()
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <title>MusicaBR</title>
   </head>
   <body>
     <div id="root"></div>
@@ -378,6 +385,9 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import Post, Vote, Genre, Comment, SavedPost, Profile, Notification, Sub
 from typing import List, Optional
+from django.db.models import F
+from django.db.models.functions import Now
+
 
 # Inicialização da API
 api = NinjaAPI()
@@ -567,7 +577,11 @@ def list_posts(
     if genre:
         posts = posts.filter(genre__slug=genre)
     if sub_slug:
-        posts = posts.filter(sub__slug=sub_slug)
+        posts = posts.filter
+    if sort == "trending":
+        posts = posts.annotate(
+            age_hours=(Now() - F("created_at"))
+        ).order_by("-score", "-created_at")
     
     order = '-score' if sort == 'top' else '-created_at'
     return posts.order_by(order)[offset : offset + limit]
@@ -698,6 +712,7 @@ def create_sub(request, data: SubIn):
     
     return {"id": sub.id, "slug": sub.slug}
 
+
 # === Fim do arquivo: ./music/api.py ===
 
 # === Início do arquivo: ./music/apps.py ===
@@ -740,78 +755,253 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+import re
 
-# 1. Gênero
+
+# -----------------------------
+# Utilitário para gerar embed
+# -----------------------------
+
+def youtube_embed(url):
+    pattern = r"(?:v=|youtu.be/)([A-Za-z0-9_-]+)"
+    match = re.search(pattern, url)
+
+    if match:
+        video_id = match.group(1)
+        return f"https://www.youtube.com/embed/{video_id}"
+
+    return None
+
+
+# -----------------------------
+# Gênero musical
+# -----------------------------
+
 class Genre(models.Model):
     name = models.CharField(max_length=50, unique=True)
     slug = models.SlugField(unique=True)
-    def __str__(self): return self.name
 
-# 2. Comunidades (Subs)
+    def __str__(self):
+        return self.name
+
+
+# -----------------------------
+# Comunidades (Subs)
+# -----------------------------
+
 class Sub(models.Model):
     name = models.CharField(max_length=50, unique=True)
     slug = models.SlugField(unique=True)
+
     description = models.TextField(blank=True)
-    creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_subs')
-    members = models.ManyToManyField(User, related_name='joined_subs', blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    def __str__(self): return f"s/{self.slug}"
 
-# 3. Postagem Principal
+    creator = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="created_subs"
+    )
+
+    members = models.ManyToManyField(
+        User,
+        related_name="joined_subs",
+        blank=True
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"s/{self.slug}"
+
+
+# -----------------------------
+# Post principal
+# -----------------------------
+
 class Post(models.Model):
+
     title = models.CharField(max_length=200)
+
     url = models.URLField()
-    content = models.TextField(blank=True, null=True)
-    image = models.ImageField(upload_to='post_images/', blank=True, null=True)
-    author = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    embed_url = models.URLField(
+        blank=True,
+        null=True
+    )
+
+    content = models.TextField(
+        blank=True,
+        null=True
+    )
+
+    image = models.ImageField(
+        upload_to="post_images/",
+        blank=True,
+        null=True
+    )
+
+    author = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE
+    )
+
     score = models.IntegerField(default=0)
-    sub = models.ForeignKey(Sub, on_delete=models.CASCADE, related_name='posts', null=True) # Permitir null temporariamente para migrar
-    genre = models.ForeignKey(Genre, on_delete=models.SET_NULL, null=True, blank=True, related_name='posts')
-    created_at = models.DateTimeField(auto_now_add=True)
-    def __str__(self): return self.title
 
-# 4. Votos
+    sub = models.ForeignKey(
+        Sub,
+        on_delete=models.CASCADE,
+        related_name="posts",
+        null=True
+    )
+
+    genre = models.ForeignKey(
+        Genre,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="posts"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+
+        if self.url:
+            if "youtube.com" in self.url or "youtu.be" in self.url:
+                self.embed_url = youtube_embed(self.url)
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.title
+
+
+# -----------------------------
+# Votos
+# -----------------------------
+
 class Vote(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='votes')
-    class Meta:
-        unique_together = ('user', 'post')
 
-# 5. Comentários
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE
+    )
+
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="votes"
+    )
+
+    class Meta:
+        unique_together = ("user", "post")
+
+
+# -----------------------------
+# Comentários
+# -----------------------------
+
 class Comment(models.Model):
-    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='comments')
-    author = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="comments"
+    )
+
+    author = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE
+    )
+
     text = models.TextField()
+
     created_at = models.DateTimeField(auto_now_add=True)
 
-# 6. Salvos (Biblioteca)
+
+# -----------------------------
+# Biblioteca (posts salvos)
+# -----------------------------
+
 class SavedPost(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='saved_posts')
-    post = models.ForeignKey(Post, on_delete=models.CASCADE)
-    created_at = models.DateTimeField(auto_now_add=True)
-    class Meta:
-        unique_together = ('user', 'post')
 
-# 7. Perfil (Status Online)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="saved_posts"
+    )
+
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "post")
+
+
+# -----------------------------
+# Perfil (status online)
+# -----------------------------
+
 class Profile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="profile"
+    )
+
     last_seen = models.DateTimeField(default=timezone.now)
 
-# 8. Notificações (O que estava faltando!)
+
+# -----------------------------
+# Notificações
+# -----------------------------
+
 class Notification(models.Model):
-    TYPES = (('vote', 'Vote'), ('comment', 'Comment'))
-    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
-    actor = models.ForeignKey(User, on_delete=models.CASCADE)
-    notification_type = models.CharField(max_length=10, choices=TYPES)
-    post = models.ForeignKey(Post, on_delete=models.CASCADE)
+
+    TYPES = (
+        ("vote", "Vote"),
+        ("comment", "Comment"),
+    )
+
+    recipient = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="notifications"
+    )
+
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE
+    )
+
+    notification_type = models.CharField(
+        max_length=10,
+        choices=TYPES
+    )
+
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE
+    )
+
     is_read = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
-# Signals para criar Perfil automaticamente
+
+# -----------------------------
+# Criar Profile automaticamente
+# -----------------------------
+
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
         Profile.objects.create(user=instance)
+
 
 # === Fim do arquivo: ./music/models.py ===
 
@@ -1119,6 +1309,30 @@ class Migration(migrations.Migration):
 
 
 # === Fim do arquivo: ./music/migrations/0007_notification_sub_post_sub.py ===
+
+# === Início do arquivo: ./music/migrations/0008_post_embed_url.py ===
+
+# Generated by Django 6.0.2 on 2026-03-11 10:10
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('music', '0007_notification_sub_post_sub'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='post',
+            name='embed_url',
+            field=models.URLField(blank=True, null=True),
+        ),
+    ]
+
+
+# === Fim do arquivo: ./music/migrations/0008_post_embed_url.py ===
 
 # === Início do arquivo: ./music/migrations/__init__.py ===
 
