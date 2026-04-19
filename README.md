@@ -323,6 +323,7 @@ LASTFM_SECRET=...
 ## 👨‍💻 Autor
 
 Lucas Dourado
+
 Medicina + Engenharia + IA + Saúde Coletiva
 
 ---
