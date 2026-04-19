@@ -1,4 +1,4 @@
-# 🎧 MusicaBR
+#  MusicaBR
 
 MusicaBR é uma rede social de descoberta musical que combina comportamento do usuário, grafos semânticos e inteligência artificial para conectar pessoas, músicas e experiências no mundo real.
 
@@ -6,7 +6,7 @@ A plataforma une o melhor de Spotify, Reddit, YouTube, Last.fm e TikTok — e ev
 
 ---
 
-# 🚀 Visão
+#  Visão
 
 Transformar descoberta musical em descoberta de experiências.
 
@@ -15,7 +15,7 @@ Mas conectar pessoas ao que está acontecendo.
 
 ---
 
-# 🔥 O Problema
+#  O Problema
 
 Hoje, a descoberta musical está fragmentada:
 
@@ -33,9 +33,9 @@ MusicaBR resolve isso unificando:
 
 ---
 
-# 🧠 Core do Produto
+#  Core do Produto
 
-## 🔥 Feed Inteligente
+##  Feed Inteligente
 
 - Feed híbrido (ranking estilo Reddit + comportamento do usuário)
 - Personalização em tempo real
@@ -44,7 +44,7 @@ MusicaBR resolve isso unificando:
 
 ---
 
-## 🎯 Sistema de Recomendação
+##  Sistema de Recomendação
 
 Baseado em comportamento implícito:
 
@@ -57,7 +57,7 @@ Inspirado em TikTok + Spotify.
 
 ---
 
-## 🧩 Grafo Semântico
+##  Grafo Semântico
 
 - Conecta:
   - gêneros
@@ -69,7 +69,7 @@ Inspirado em TikTok + Spotify.
 
 ---
 
-## 🔍 Mood Search
+##  Mood Search
 
 Busca por contexto emocional:
 
@@ -86,7 +86,7 @@ madrugada sozinho
 
 ---
 
-## 🧠 Banco de Dados Semântico
+##  Banco de Dados Semântico
 
 - Estrutura orientada a significado
 - Integra:
@@ -97,7 +97,7 @@ madrugada sozinho
 
 ---
 
-## 📡 Ingestão de Conteúdo
+##  Ingestão de Conteúdo
 
 - YouTube API
 - Metadata musical
@@ -105,7 +105,7 @@ madrugada sozinho
 
 ---
 
-## 🧑‍🤝‍🧑 Comunidades (subs)
+##  Comunidades (subs)
 
 - Estilo Reddit
 - Feed por comunidade
@@ -114,7 +114,7 @@ madrugada sozinho
 
 ---
 
-## 📊 Analytics + IA
+##  Analytics + IA
 
 - Dashboard com Plotly
 - Métricas em tempo real
@@ -123,7 +123,7 @@ madrugada sozinho
 
 ---
 
-## 🔔 Notificações Inteligentes
+##  Notificações Inteligentes
 
 - Baseadas em comportamento real
 - Adaptativas
@@ -131,7 +131,7 @@ madrugada sozinho
 
 ---
 
-## 🎥 UX estilo TikTok
+##  UX estilo TikTok
 
 - Scroll infinito
 - Feedback implícito
@@ -139,11 +139,11 @@ madrugada sozinho
 
 ---
 
-# 🎟️ Descoberta de Eventos (Dê um rolê)
+#  Descoberta de Eventos (Dê um rolê)
 
 A camada de eventos conecta música ao mundo real.
 
-## ✅ Implementado
+##  Implementado
 
 - Eventos integrados ao feed  
 - Eventos tratados como conteúdo recomendável  
@@ -154,9 +154,9 @@ A camada de eventos conecta música ao mundo real.
 
 ---
 
-## 🔮 Em desenvolvimento
+##  Em desenvolvimento
 
-### 🧠 Recomendação de Eventos
+###  Recomendação de Eventos
 
 - Baseada em:
   - gosto musical
@@ -165,7 +165,7 @@ A camada de eventos conecta música ao mundo real.
 
 ---
 
-### 📍 Descoberta Local
+###  Descoberta Local
 
 - Eventos por cidade  
 - Ranking local  
@@ -173,7 +173,7 @@ A camada de eventos conecta música ao mundo real.
 
 ---
 
-### 🔥 Ranking de Eventos
+###  Ranking de Eventos
 
 - Trending events  
 - Score por engajamento real  
@@ -181,7 +181,7 @@ A camada de eventos conecta música ao mundo real.
 
 ---
 
-### 👥 Camada Social
+###  Camada Social
 
 - Ver quem vai  
 - Eventos populares entre perfis similares  
@@ -189,7 +189,7 @@ A camada de eventos conecta música ao mundo real.
 
 ---
 
-### 🧠 IA de Tendências
+###  IA de Tendências
 
 - Identificação de eventos emergentes  
 - Crescimento de cenas locais  
@@ -197,7 +197,7 @@ A camada de eventos conecta música ao mundo real.
 
 ---
 
-### 🔗 Música → Evento
+###  Música → Evento
 
 Pipeline completo:
 
@@ -209,14 +209,14 @@ descoberta → interesse → presença
 
 ---
 
-### 📆 Histórico de Experiências
+###  Histórico de Experiências
 
 - Eventos frequentados  
 - Perfil cultural do usuário  
 
 ---
 
-# 🧠 Arquitetura
+#  Arquitetura
 
 ## Backend
 
@@ -240,7 +240,7 @@ descoberta → interesse → presença
 
 ---
 
-# ⚙️ API
+#  API
 
 ## Feed
 
@@ -302,7 +302,7 @@ POST /api/ingest
 
 ---
 
-# 🛠️ Setup
+#  Setup
 
 ## 1. Clonar
 
@@ -362,7 +362,7 @@ npm run dev
 
 ---
 
-# 🔐 Segurança
+#  Segurança
 
 * Nunca commitar `.env`
 * Nunca expor API keys no frontend
@@ -371,7 +371,7 @@ npm run dev
 
 ---
 
-# 🧪 Status
+#  Status
 
 * Feed híbrido funcionando
 * Sistema de recomendação ativo
@@ -381,7 +381,7 @@ npm run dev
 
 ---
 
-# 🔮 Direção
+#  Direção
 
 MusicaBR está evoluindo de:
 
@@ -399,7 +399,7 @@ Dados → contexto → recomendação → ação no mundo real
 
 ---
 
-# 🧠 Origem
+#  Origem
 
 O projeto resgata um conceito iniciado em 2012:
 
