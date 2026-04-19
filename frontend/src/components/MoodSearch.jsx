@@ -6,7 +6,7 @@ export default function MoodSearch() {
   const [results, setResults] = useState([]);
 
   async function search() {
-    const data = await apiGet(`/mood?q=${q}`);
+    if (!q.trim()) return; const data = await apiGet(`/mood?q=${q}`);
     setResults(data);
   }
 

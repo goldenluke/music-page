@@ -24,7 +24,7 @@ export default function ProfilePage() {
 
   // 1. Verifica quem é o usuário logado para saber se o perfil é dele mesmo
   useEffect(() => {
-    axios.get('http://localhost:8000/api/me')
+    api.get('/api/me')
     .then(res => setCurrentUser(res.data))
     .catch(() => setCurrentUser(null));
   }, []);
@@ -34,19 +34,19 @@ export default function ProfilePage() {
   // 2. Busca os dados básicos do perfil (Karma, Data de ingresso)
   const { data: profile, isLoading: isLoadingProfile } = useQuery({
     queryKey: ['profile', username],
-    queryFn: () => axios.get(`http://localhost:8000/api/user/${username}`).then(res => res.data),
+    queryFn: () => api.get(`/api/user/${username}`).then(res => res.data),
   });
 
   // 3. Busca as postagens feitas por este usuário
   const { data: userPosts, isLoading: isLoadingPosts } = useQuery({
     queryKey: ['user-posts', username],
-    queryFn: () => axios.get(`http://localhost:8000/api/user/${username}/posts`).then(res => res.data),
+    queryFn: () => api.get(`/api/user/${username}/posts`).then(res => res.data),
   });
 
   // 4. Busca as postagens SALVAS (Biblioteca) - Apenas se for o próprio perfil
   const { data: savedPosts, isLoading: isLoadingSaved } = useQuery({
     queryKey: ['saved-posts'],
-    queryFn: () => axios.get('http://localhost:8000/api/me/saved').then(res => res.data),
+    queryFn: () => api.get('/api/me/saved').then(res => res.data),
                                                                    enabled: isOwnProfile && activeTab === 'saved', // Só busca se necessário
   });
 

@@ -23,7 +23,7 @@ export default function MusicCard({ post, user }) {
   const queryClient = useQueryClient()
 
   const voteMutation = useMutation({
-    mutationFn: () => axios.post(`/posts/${post?.id}/upvote`),
+    mutationFn: () => api.post(`/posts/${post?.id}/upvote`),
                                    onSuccess: () => queryClient.invalidateQueries(['posts']),
                                    onError: (err) => {
                                      if (err.response?.status === 401)
@@ -32,7 +32,7 @@ export default function MusicCard({ post, user }) {
   })
 
   const saveMutation = useMutation({
-    mutationFn: () => axios.post(`/posts/${post?.id}/save`),
+    mutationFn: () => api.post(`/posts/${post?.id}/save`),
                                    onSuccess: () => {
                                      queryClient.invalidateQueries(['posts'])
                                      queryClient.invalidateQueries(['saved-posts'])

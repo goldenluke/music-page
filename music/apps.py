@@ -1,4 +1,3 @@
-# music/apps.py
 from django.apps import AppConfig
 
 class MusicConfig(AppConfig):
@@ -6,4 +5,4 @@ class MusicConfig(AppConfig):
     name = 'music'
 
     def ready(self):
-        import music.signals # <--- ADICIONE ESTA LINHA
+        import music.signals

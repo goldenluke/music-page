@@ -1,25 +1,29 @@
-import { useEffect, useState } from "react";
-import { apiGet } from "./api";
+import { useEffect, useState } from "react"
+import api from "@/lib/api"
 
 export default function PlaylistWidget() {
-  const [list, setList] = useState([]);
+  const [list, setList] = useState([])
 
   useEffect(() => {
-    load();
-  }, []);
-
-  async function load() {
-    const data = await apiGet("/playlist/hybrid?q=techno");
-    setList(data);
-  }
+    api.get("/playlist/hybrid?q=techno")
+      .then(res => setList(res.data))
+      .catch(() => {})
+  }, [])
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="space-y-3">
       {list.map((m, i) => (
-        <div key={i} className="text-xs text-slate-300">
-          {m.title}
+        <div key={i} className="flex gap-3 items-center">
+          <img
+            src={m.thumbnail || "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg"}
+            className="w-14 h-14 rounded-lg object-cover"
+          />
+          <div className="text-xs">
+            <div className="font-bold">{m.title}</div>
+            <div className="text-slate-500">{m.source}</div>
+          </div>
         </div>
       ))}
     </div>
-  );
+  )
 }

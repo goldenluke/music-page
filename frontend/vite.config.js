@@ -1,33 +1,24 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from "vite"
+import react from "@vitejs/plugin-react"
+import path from "path"
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-
-                            server: {
-                              port: 3001,
-                              host: true,
-
-                              // Permite acesso via ngrok
-                              allowedHosts: [
-                                "labsus.ngrok-free.app",
-                                "musicpage.ngrok-free.app",
-                                "musicabrchat.ngrok-free.app"
-                              ],
-
-                              proxy: {
-                                // API Django
-                                '/api': {
-                                  target: 'http://127.0.0.1:8000',
-                            changeOrigin: true,
-                                },
-
-                            // Arquivos de mídia do Django
-                            '/media': {
-                              target: 'http://127.0.0.1:8000',
-                            changeOrigin: true,
-                            }
-                              }
-                            }
+  plugins: [react()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src")
+    }
+  },
+  server: {
+    host: true,
+    port: 3000,
+    allowedHosts: ["musicabr.ngrok.app"],
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+        secure: false
+      }
+    }
+  }
 })

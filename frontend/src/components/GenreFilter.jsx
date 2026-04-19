@@ -14,7 +14,7 @@ export default function GenreFilter({ activeGenre, onSelect }) {
 
   const { data: genresData } = useQuery({
     queryKey: ['genres'],
-    queryFn: () => axios.get('/genres').then(res => res.data),
+    queryFn: () => api.get('/genres').then(res => res.data),
                                         staleTime: 1000 * 60 * 10,
   })
 

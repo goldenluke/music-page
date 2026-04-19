@@ -1,52 +1,57 @@
-from googleapiclient.discovery import build
 import os
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 def get_youtube_client():
-    """Inicializa o cliente apenas quando necessário para evitar erros de credenciais no startup"""
+    # Tenta pegar do ambiente
     api_key = os.getenv("YOUTUBE_API_KEY")
+    
     if not api_key:
-        # Apenas um aviso no console, não trava o servidor
-        # print("⚠️ Aviso: YOUTUBE_API_KEY não encontrada no ambiente.")
+        print("❌ ERRO: YOUTUBE_API_KEY não encontrada no ambiente (os.getenv)")
         return None
+        
     try:
         return build("youtube", "v3", developerKey=api_key)
     except Exception as e:
-        print(f"❌ Erro ao conectar na API do YouTube: {e}")
+        print(f"❌ ERRO ao inicializar cliente Google: {e}")
         return None
 
-def search_youtube(query, limit=10):
+def search_youtube(query, limit=5):
     youtube = get_youtube_client()
     if not youtube:
         return []
+    
+    try:
+        req = youtube.search().list(
+            q=query,
+            part="snippet",
+            type="video",
+            maxResults=limit,
+            regionCode="BR"
+        )
+        res = req.execute()
+        
+        results = []
+        for item in res.get("items", []):
+            results.append({
+                "title": item["snippet"]["title"],
+                "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}",
+                "thumbnail": item["snippet"]["thumbnails"]["high"]["url"]
+            })
+        
+        print(f"✅ Busca YT concluída: {len(results)} resultados para '{query}'")
+        return results
 
-    req = youtube.search().list(
-        q=query,
-        part="snippet",
-        type="video",
-        maxResults=limit
-    )
+    except HttpError as e:
+        print(f"❌ ERRO na API do YouTube: {e.content.decode()}")
+        return []
+    except Exception as e:
+        print(f"❌ ERRO genérico no search_youtube: {e}")
+        return []
 
-    res = req.execute()
-    results = []
-
-    for item in res.get("items", []):
-        video_id = item["id"]["videoId"]
-        snippet = item["snippet"]
-
-        results.append({
-            "title": snippet["title"],
-            "embed_url": f"https://www.youtube.com/embed/{video_id}",
-            "thumbnail": snippet["thumbnails"]["high"]["url"]
-        })
-
-    return results
-
-def ingest_youtube(query):
-    """
-    Função exigida pelo api.py.
-    Implementação básica para satisfazer o import.
-    """
-    print(f"🚀 Iniciando ingestão para: {query}")
-    results = search_youtube(query, limit=5)
-    # Aqui você poderia salvar no banco de dados futuramente
-    return {"status": "success", "count": len(results), "items": results}
+def ingest_youtube(title, url, user):
+    from .models import Post, Sub
+    sub, _ = Sub.objects.get_or_create(slug="geral", defaults={"name": "Geral", "creator": user})
+    post = Post.objects.create(title=title, url=url, author=user, sub=sub)
+    post.save() 
+    return post

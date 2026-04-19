@@ -1,69 +1,56 @@
 @import "tailwindcss";
 
-/* O resto do seu CSS customizado abaixo */
 body {
   background-color: #050608;
   color: white;
   margin: 0;
-  font-family: sans-serif;
+  font-family: 'Inter', sans-serif;
 }
-
-@utility no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-  &::-webkit-scrollbar {
-    display: none;
-  }
-}
-
-/* ================================
- *  Background MusicaBR 🇧🇷
- = *=============================== */
-
-.bg-brasil {
-
-  background: linear-gradient(
-    120deg,
-    #009c3b,
-    #00b347,
-    #ffdf00,
-    #009c3b
-  );
-
-  background-size: 300% 300%;
-
-  animation: brasilGradient 18s ease infinite;
-
-}
-
-/* =========================
- *  Background MusicaBR
- = *======================== */
 
 .bg-musica {
-
-  background:
-  radial-gradient(circle at 20% 20%, rgba(0,156,59,0.15), transparent 40%),
-  radial-gradient(circle at 80% 80%, rgba(255,223,0,0.08), transparent 40%),
-  #050608;
-
+  background: 
+    radial-gradient(circle at 0% 0%, rgba(0, 156, 59, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(255, 223, 0, 0.03) 0%, transparent 50%),
+    #050608;
 }
 
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1a1a1a; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #009c3b; }
 
-/* animação */
+/* AI Glow Effect */
+.ai-glow {
+  box-shadow: 0 0 20px rgba(0, 156, 59, 0.2);
+  border: 1px solid rgba(0, 156, 59, 0.3) !important;
+}
 
-@keyframes brasilGradient {
+/* Glassmorphism para os cards do Feed */
+.glass-card {
+  background: rgba(15, 17, 21, 0.8) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
 
-  0% {
-    background-position: 0% 50%;
-  }
-
-  50% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0% 50%;
-  }
-
+/* Animação suave para os badges de IA */
+@keyframes sparkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.2); }
+}
+.animate-sparkle {
+  animation: sparkle 2s ease-in-out infinite;
+}
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee 40s linear infinite;
+}
+.animate-marquee:hover {
+  animation-play-state: paused;
 }

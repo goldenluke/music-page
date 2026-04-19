@@ -1,25 +1,19 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from .models import Comment, Vote, Notification
+from .models import UserEvent
+from .services.bandit import update_bandit
 
-@receiver(post_save, sender=Comment)
-def notify_comment(sender, instance, created, **kwargs):
-    # Notifica apenas se for um comentário novo e não for do próprio autor
-    if created and instance.author != instance.post.author:
-        Notification.objects.create(
-            recipient=instance.post.author,
-            actor=instance.author,
-            notification_type='comment',
-            post=instance.post
-        )
+@receiver(post_save, sender=UserEvent)
+def bandit_feedback(sender, instance, created, **kwargs):
+    if not created:
+        return
 
-@receiver(post_save, sender=Vote)
-def notify_vote(sender, instance, created, **kwargs):
-    # Notifica apenas votos novos (upvotes)
-    if created and instance.user != instance.post.author:
-        Notification.objects.create(
-            recipient=instance.post.author,
-            actor=instance.user,
-            notification_type='vote',
-            post=instance.post
-        )
+    reward_map = {
+        "click": 1,
+        "upvote": 2,
+        "skip": -0.5
+    }
+
+    reward = reward_map.get(instance.event_type, 0)
+
+    update_bandit(instance.post, reward)

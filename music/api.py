@@ -1,603 +1,232 @@
-from .search import search_posts
-from ninja import NinjaAPI, Schema, File, Form
-from ninja.files import UploadedFile
-from ninja.security import django_auth
-from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth.models import User
-from django.shortcuts import get_object_or_404
-from django.db.models import Sum, Count
-from django.utils import timezone
-from datetime import timedelta
-from .models import Post, Vote, Genre, Comment, SavedPost, Profile, Notification, Sub
-from typing import List, Optional
-from django.db.models import F
-from django.db.models.functions import Now
+from music.api_posts_fix import apply_posts_fix
+from ninja import NinjaAPI
+from django.db.models import Count
 
-
-# Inicialização da API
 api = NinjaAPI()
 
-from ninja import Schema
 
-class ArtistSchema(Schema):
+# =========================
+# SERIALIZER
+# =========================
 
-    id: int
-    name: str
-    slug: str
-
-@api.get("/artists/{slug}")
-def get_artist(request, slug: str):
-
-    artist = Artist.objects.get(slug=slug)
-
-    posts = Post.objects.filter(artist=artist).order_by("-score")[:20]
-
-    genres = artist.genres.all()
-
-    related_artists = Artist.objects.filter(
-        genres__in=genres
-    ).exclude(id=artist.id).distinct()[:10]
-
-    subs = Sub.objects.filter(posts__artist=artist).distinct()[:10]
-
+def serialize_post(p):
     return {
-
-        "artist": {
-            "name": artist.name,
-            "slug": artist.slug
-        },
-
-        "posts": [
-
-            {
-                "id": p.id,
-                "title": p.title,
-                "score": p.score
-            }
-
-            for p in posts
-        ],
-
-        "genres": [
-            g.name for g in genres
-        ],
-
-        "related_artists": [
-            {
-                "name": a.name,
-                "slug": a.slug
-            }
-            for a in related_artists
-        ],
-
-        "subs": [
-            s.slug for s in subs
-        ]
+        "id": p.id,
+        "title": p.title,
+        "sub": p.sub.name if p.sub else "",
+        "genre": p.genre.name if p.genre else ""
     }
 
-# --- 1. SCHEMAS (Definições de Dados) ---
 
-class LoginPayload(Schema):
-    username: str
-    password: str
+# =========================
+# SUBS (USANDO MODEL REAL)
+# =========================
 
-class RegisterIn(Schema):
-    username: str
-    email: str
-    password: str
 
-class GenreOut(Schema):
-    id: int
-    name: str
-    slug: str
+@api.get("/subs")
+def subs(request):
+    from music.models import Sub
+    from django.db.models import Count
 
-class SubOut(Schema):
-    id: int
-    name: str
-    slug: str
-    description: str
-    member_count: int
-    is_member: bool = False
+    qs = Sub.objects.annotate(count=Count("posts")).order_by("-count")
 
-    @staticmethod
-    def resolve_member_count(obj):
-        return obj.members.count()
+    return [
+        {
+            "name": s.name,
+            "slug": s.slug,
+            "count": s.count
+        }
+        for s in qs
+    ]
+apply_posts_fix(api)
 
-    @staticmethod
-    def resolve_is_member(obj, context):
-        request = context.get('request')
-        if request and request.user.is_authenticated:
-            return obj.members.filter(id=request.user.id).exists()
-        return False
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User
 
-class CommentIn(Schema):
-    text: str
 
-class CommentSchema(Schema):
-    id: int
-    text: str
-    author_username: str
-    created_at: str
-
-    @staticmethod
-    def resolve_author_username(obj):
-        return obj.author.username
-    
-    @staticmethod
-    def resolve_created_at(obj):
-        return obj.created_at.strftime("%H:%M - %d/%m")
-
-class PostSchema(Schema):
-    id: int
-    title: str
-    url: str
-    content: Optional[str] = None
-    image: Optional[str] = None
-    score: int
-    author_username: str = None
-    genre_name: Optional[str] = None
-    sub_slug: str = None
-    voted: bool = False
-    is_saved: bool = False
-
-    @staticmethod
-    def resolve_author_username(obj):
-        return obj.author.username
-
-    @staticmethod
-    def resolve_genre_name(obj):
-        return obj.genre.name if obj.genre else None
-
-    @staticmethod
-    def resolve_sub_slug(obj):
-        return obj.sub.slug if obj.sub else "geral"
-
-    @staticmethod
-    def resolve_image(obj):
-        return obj.image.url if obj.image else None
-
-    @staticmethod
-    def resolve_voted(obj, context):
-        request = context.get('request')
-        if request and request.user.is_authenticated:
-            return Vote.objects.filter(user=request.user, post=obj).exists()
-        return False
-
-    @staticmethod
-    def resolve_is_saved(obj, context):
-        request = context.get('request')
-        if request and request.user.is_authenticated:
-            return SavedPost.objects.filter(user=request.user, post=obj).exists()
-        return False
-
-class UserProfileOut(Schema):
-    username: str
-    karma: int
-    joined_at: str
-
-class StatsOut(Schema):
-    total_members: int
-    online_count: int
-
-class NotificationOut(Schema):
-    id: int
-    actor_username: str
-    notification_type: str
-    post_title: str
-    is_read: bool
-    created_at: str
-
-    @staticmethod
-    def resolve_actor_username(obj): return obj.actor.username
-    @staticmethod
-    def resolve_post_title(obj): return obj.post.title
-    @staticmethod
-    def resolve_created_at(obj): return obj.created_at.strftime("%H:%M")
-
-# --- 2. ROTAS DE AUTENTICAÇÃO ---
-
-@api.post("/login")
-def login_user(request, data: LoginPayload):
-    user = authenticate(username=data.username, password=data.password)
-    if user:
-        login(request, user)
-        return {"success": True, "username": user.username}
-    return api.create_response(request, {"detail": "Incorreto"}, status=401)
-
+# =========================
+# REGISTER
+# =========================
 @api.post("/register")
-def register_user(request, data: RegisterIn):
-    if User.objects.filter(username=data.username).exists():
-        return api.create_response(request, {"detail": "Username já existe"}, status=400)
-    user = User.objects.create_user(username=data.username, email=data.email, password=data.password)
-    login(request, user)
-    return {"success": True, "username": user.username}
+def register(request, payload: dict):
+    username = payload.get("username")
+    password = payload.get("password")
+    email = payload.get("email")
 
-@api.post("/logout")
-def logout_user(request):
-    logout(request)
-    return {"success": True}
+    if not username or not password:
+        return {"error": "missing fields"}
 
-@api.get("/me", auth=django_auth)
-def me(request):
-    return {"username": request.auth.username, "id": request.auth.id}
+    if User.objects.filter(username=username).exists():
+        return {"error": "user exists"}
 
-# --- 3. ROTAS DE COMUNIDADES (SUBS) ---
-
-@api.get("/subs", response=List[SubOut])
-def list_subs(request):
-    return Sub.objects.all()
-
-@api.get("/subs/{slug}", response=SubOut)
-def get_sub(request, slug: str):
-    return get_object_or_404(Sub, slug=slug)
-
-@api.post("/subs/{slug}/join", auth=django_auth)
-def join_sub(request, slug: str):
-    sub = get_object_or_404(Sub, slug=slug)
-    if sub.members.filter(id=request.auth.id).exists():
-        sub.members.remove(request.auth)
-        joined = False
-    else:
-        sub.members.add(request.auth)
-        joined = True
-    return {"joined": joined}
-
-# --- 4. ROTAS DE POSTS (Feed, Busca, Gênero, Sub e Paginação) ---
-
-@api.get("/posts", response=List[PostSchema])
-def list_posts(
-    request,
-    sort: str = "latest",
-    search: Optional[str] = None,
-    genre: Optional[str] = None,
-    sub_slug: Optional[str] = None,
-    limit: int = 10,
-    offset: int = 0
-):
-
-    posts = Post.objects.all()
-
-    if search:
-        posts = posts.filter(title__icontains=search)
-
-    if genre:
-        posts = posts.filter(genre__slug=genre)
-
-    if sub_slug:
-        posts = posts.filter(sub__slug=sub_slug)
-
-    # Ordenação
-    if sort == "top":
-        posts = posts.order_by("-score")
-
-    elif sort == "trending":
-        posts = posts.annotate(
-            age_hours=(Now() - F("created_at"))
-        ).order_by("-score", "-created_at")
-
-    else:
-        posts = posts.order_by("-created_at")
-
-    return posts[offset: offset + limit]
-
-@api.post("/posts", auth=django_auth)
-def create_post(
-    request, 
-    title: str = Form(...), 
-    url: str = Form(...), 
-    sub_id: int = Form(...), # Agora obrigatório escolher a comunidade
-    content: str = Form(""), 
-    genre_id: Optional[int] = Form(None),
-    image: UploadedFile = File(None)
-):
-    post = Post.objects.create(
-        title=title, url=url, content=content,
-        sub_id=sub_id, genre_id=genre_id, image=image, author=request.auth
+    user = User.objects.create_user(
+        username=username,
+        password=password,
+        email=email
     )
-    return {"id": post.id}
 
-# --- 5. INTERAÇÕES: VOTOS, COMENTÁRIOS E SAVED ---
+    login(request, user)
 
-@api.post("/posts/{post_id}/upvote", auth=django_auth)
-def upvote(request, post_id: int):
-    post = get_object_or_404(Post, id=post_id)
-    vote_qs = Vote.objects.filter(user=request.auth, post=post)
-    if vote_qs.exists():
-        vote_qs.delete()
-        post.score -= 1
-        voted = False
-    else:
-        Vote.objects.create(user=request.auth, post=post)
-        post.score += 1
-        voted = True
-    post.save()
-    return {"score": post.score, "voted": voted}
-
-@api.post("/posts/{post_id}/save", auth=django_auth)
-def toggle_save_post(request, post_id: int):
-    post = get_object_or_404(Post, id=post_id)
-    saved_qs = SavedPost.objects.filter(user=request.auth, post=post)
-    if saved_qs.exists():
-        saved_qs.delete()
-        saved = False
-    else:
-        SavedPost.objects.create(user=request.auth, post=post)
-        saved = True
-    return {"is_saved": saved}
-
-@api.get("/posts/{post_id}/comments", response=List[CommentSchema])
-def list_comments(request, post_id: int):
-    return Comment.objects.filter(post_id=post_id).order_by('-created_at')
-
-@api.post("/posts/{post_id}/comments", auth=django_auth)
-def create_comment(request, post_id: int, data: CommentIn):
-    post = get_object_or_404(Post, id=post_id)
-    Comment.objects.create(post=post, author=request.auth, text=data.text)
-    return {"success": True}
-
-# --- 6. PERFIS, NOTIFICAÇÕES E STATS ---
-
-@api.get("/stats", response=StatsOut)
-def get_stats(request):
-    total_members = User.objects.count()
-    limit = timezone.now() - timedelta(minutes=5)
-    online_count = Profile.objects.filter(last_seen__gte=limit).count()
-    return {"total_members": total_members, "online_count": max(online_count, 1)}
-
-@api.get("/notifications", response=List[NotificationOut], auth=django_auth)
-def list_notifications(request):
-    return Notification.objects.filter(recipient=request.auth)[:20]
-
-@api.get("/genres", response=List[GenreOut])
-def list_genres(request):
-    return Genre.objects.all()
-
-@api.get("/user/{username}", response=UserProfileOut)
-def get_user_profile(request, username: str):
-    user = get_object_or_404(User, username=username)
-    karma = Post.objects.filter(author=user).aggregate(Sum('score'))['score__sum'] or 0
     return {
-        "username": user.username,
-        "karma": karma,
-        "joined_at": user.date_joined.strftime("%B %Y")
+        "id": user.id,
+        "username": user.username
     }
 
-@api.get("/user/{username}/posts", response=List[PostSchema])
-def list_user_posts(request, username: str):
-    return Post.objects.filter(author__username=username).order_by('-created_at')
 
-@api.get("/me/saved", response=List[PostSchema], auth=django_auth)
-def list_saved_posts(request):
-    saved_ids = SavedPost.objects.filter(user=request.auth).values_list('post_id', flat=True)
-    return Post.objects.filter(id__in=saved_ids).order_by('-created_at')
+# =========================
+# LOGIN
+# =========================
 
-@api.get("/notifications", response=List[NotificationOut], auth=django_auth)
-def list_notifications(request):
-    # Retorna as 15 mais recentes
-    return Notification.objects.filter(recipient=request.auth).order_by('-created_at')[:15]
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User
+from music.schemas import AuthSchema, RegisterSchema
 
-@api.post("/notifications/read-all", auth=django_auth)
-def mark_notifications_as_read(request):
-    Notification.objects.filter(recipient=request.auth, is_read=False).update(is_read=True)
-    return {"success": True}
 
-# music/api.py
-from django.utils.text import slugify
+# =========================
+# REGISTER
+# =========================
+@api.post("/register")
+def register(request, payload: RegisterSchema):
+    if User.objects.filter(username=payload.username).exists():
+        return {"error": "user exists"}
 
-class SubIn(Schema):
-    name: str
-    description: str
-
-@api.post("/subs", auth=django_auth)
-def create_sub(request, data: SubIn):
-    # Verifica se já existe um nome igual ou slug igual
-    slug = slugify(data.name)
-    if Sub.objects.filter(slug=slug).exists():
-        return api.create_response(request, {"detail": "Uma comunidade com este nome já existe."}, status=400)
-    
-    sub = Sub.objects.create(
-        name=data.name,
-        slug=slug,
-        description=data.description,
-        creator=request.auth
+    user = User.objects.create_user(
+        username=payload.username,
+        password=payload.password,
+        email=payload.email
     )
-    # Criador entra automaticamente como membro
-    sub.members.add(request.auth)
-    
-    return {"id": sub.id, "slug": sub.slug}
 
-# --- ANALYTICS ---
-from .analytics import get_analytics
+    login(request, user)
 
-@api.get('/analytics')
+    return {
+        "id": user.id,
+        "username": user.username
+    }
+
+
+# =========================
+# LOGIN
+# =========================
+@api.post("/login")
+def login_view(request, payload: AuthSchema):
+    user = authenticate(
+        request,
+        username=payload.username,
+        password=payload.password
+    )
+
+    if not user:
+        return {"error": "invalid credentials"}
+
+    login(request, user)
+
+    return {
+        "id": user.id,
+        "username": user.username
+    }
+
+
+# =========================
+# LOGOUT
+# =========================
+@api.post("/logout")
+def logout_view(request):
+    logout(request)
+    return {"ok": True}
+
+
+# =========================
+# ME
+# =========================
+@api.get("/me")
+def me(request):
+    if not request.user.is_authenticated:
+        return {}
+
+    return {
+        "id": request.user.id,
+        "username": request.user.username
+    }
+
+
+from music.services.youtube import search_youtube
+
+@api.get("/youtube/search")
+def youtube_search(request, q: str):
+    return search_youtube(q)
+
+
+from music.services.graph import build_graph
+
+@api.get("/graph")
+def graph(request, node: str):
+    return build_graph(node)
+
+
+from music.services.leaderboard import get_top_scouts
+
+@api.get("/leaderboard")
+def leaderboard(request):
+    return get_top_scouts()
+
+
+from music.services.analytics import get_analytics
+
+@api.get("/analytics")
 def analytics(request):
     return get_analytics()
 
 
-# --- A/B TEST FEED ---
-from .abtest import assign_group
-from .pipeline import get_recommended_posts
+from music.services.trends import get_trends
 
-@api.get("/feed/ab", auth=django_auth)
-def ab_feed(request):
-    group = assign_group(request.auth)
+@api.get("/trends")
+def trends(request):
+    return get_trends()
 
-    if group == "A":
-        posts = Post.objects.order_by("-score")[:20]
-    else:
-        posts = get_recommended_posts(request.auth)
 
-    return {
-        "group": group,
-        "posts": posts
-    }
+from music.services.notifications import get_notifications
 
-# --- TRACK EVENT ---
-from .models import UserEvent
+@api.get("/notifications")
+def notifications(request):
+    return get_notifications(request.user if request.user.is_authenticated else None)
+
+
+from music.services.feed import hybrid_feed
+
+@api.get("/feed")
+def get_feed(request, city: str = None):
+    data = hybrid_feed(request.user, city)
+    return data
+
 from django.shortcuts import get_object_or_404
+from music.models import Event, EventInteraction
 
-@api.post("/events", auth=django_auth)
-def track_event(request, post_id: int, event_type: str):
-    post = get_object_or_404(Post, id=post_id)
-
-    UserEvent.objects.create(
-        user=request.auth,
-        post=post,
-        event_type=event_type
-    )
-
-    return {"success": True}
-
-# --- SEARCH ---
-@api.get("/search")
-def search(request, q: str):
-    posts = search_posts(q)
-    return posts
-
-from .search import search_posts, autocomplete
-
-@api.get("/search")
-def search(request, q: str):
-    return search_posts(q)
-
-@api.get("/autocomplete")
-def autocomplete_api(request, q: str):
-    return autocomplete(q)
-
-from .semantic_search import semantic_search
-
-@api.get("/semantic-search")
-def semantic_search_api(request, q: str):
-    return semantic_search(q)
-
-from .recommender import smart_feed
-
-@api.get("/feed/ai", auth=django_auth)
-def ai_feed(request):
-    return smart_feed(request.auth)
-
-from .recommender import smart_feed
-
-@api.get("/feed/hybrid", auth=django_auth)
-def smart_feed_api(request):
-    return smart_feed(request.auth)
-
-from .recommender import smart_feed
-
-@api.get("/feed/smart", auth=django_auth)
-def smart_feed_api(request):
-    return smart_feed(request.auth)
-
-@api.post("/event")
-def track_event(request, post_id: int, event_type: str):
-    from .models import Post, UserEvent
-
-    post = Post.objects.get(id=post_id)
-
-    UserEvent.objects.create(
-        user=request.auth,
-        post=post,
-        event_type=event_type
-    )
-
-    # aprendizado simples: atualizar score
-    if event_type == "upvote":
-        post.score += 1
-        post.save()
-
-    return {"status": "ok"}
-
-from .rl import update_weights
-from .ab import assign_variant
-from .recommender import smart_feed
-
-@api.get("/feed/rl", auth=django_auth)
-def rl_feed(request):
-    variant = assign_variant(request.auth)
-
-    # pode trocar algoritmo aqui no futuro
-    feed = smart_feed(request.auth)
+@api.get("/events/{event_id}")
+def event_detail(request, event_id: int):
+    e = get_object_or_404(Event, id=event_id)
 
     return {
-        "variant": variant,
-        "results": feed
+        "id": e.id,
+        "title": e.title,
+        "city": e.city,
+        "date": e.date,
+        "venue": e.venue,
+        "genre": e.genre.name if e.genre else None
     }
 
-@api.post("/event")
-def track_event(request, post_id: int, event_type: str):
-    from .models import Post, UserEvent
 
-    post = Post.objects.get(id=post_id)
+@api.post("/events/{event_id}/going")
+def event_going(request, event_id: int):
+    if not request.user.is_authenticated:
+        return {"error": "auth required"}
 
-    UserEvent.objects.create(
-        user=request.auth,
-        post=post,
-        event_type=event_type
+    e = get_object_or_404(Event, id=event_id)
+
+    EventInteraction.objects.create(
+        user=request.user,
+        event=e,
+        interaction_type="going"
     )
 
-    # RL UPDATE 🔥
-    update_weights(event_type)
-
-    if event_type == "upvote":
-        post.score += 1
-        post.save()
-
-    return {"status": "learning"}
-
-from .youtube import search_youtube, ingest_youtube
-
-@api.get("/youtube/search")
-def yt_search(request, q: str):
-    return search_youtube(q)
-
-@api.post("/youtube/ingest")
-def yt_ingest(request, q: str):
-    return ingest_youtube(q)
-
-from .playlist import generate_playlist, next_track
-
-@api.get("/playlist/ai", auth=django_auth)
-def ai_playlist(request):
-    return generate_playlist(request.auth)
-
-@api.get("/autoplay/next", auth=django_auth)
-def autoplay_next(request):
-    return next_track(request.auth)
-
-from .spotify import search_spotify
-
-@api.get("/spotify/search")
-def spotify_search(request, q: str):
-    return search_spotify(q)
-
-from .hybrid import hybrid_playlist, rank_playlist
-
-@api.get("/playlist/hybrid")
-def hybrid_playlist_api(request, q: str):
-    items = hybrid_playlist(q)
-    ranked = rank_playlist(q, items)
-    return ranked
-
-from .multimodal import multimodal_feed
-
-@api.get("/feed/multimodal", auth=django_auth)
-def multimodal_feed_api(request):
-    return multimodal_feed(request.auth)
-
-from .tags import enrich_tags
-
-@api.post("/lastfm/enrich")
-def lastfm_enrich(request):
-    enrich_tags()
     return {"status": "ok"}
 
-from .mood import mood_search
-from .graph import related
-
-@api.get("/mood")
-def mood_api(request, q: str):
-    return mood_search(q)
-
-@api.get("/graph")
-def graph_api(request, node: str):
-    return related(node)

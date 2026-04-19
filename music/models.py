@@ -3,111 +3,167 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-import re
 from django.utils.text import slugify
+import re
 from .semantic import build_semantic_data
 
 def get_media_info(url):
     info = {'embed': None, 'thumbnail': None}
-    # YouTube
-    yt_match = re.search(r"(?:v=|youtu\.be/|embed/)([A-Za-z0-9_-]{11})", url)
+    yt_regex = r"(?:v=|youtu\.be\/|embed\/|watch\?v=|\&v=)([A-Za-z0-9_-]{11})"
+    yt_match = re.search(yt_regex, url)
     if yt_match:
         video_id = yt_match.group(1)
-        info['embed'] = f"https://www.youtube.com/embed/{video_id}"
-        info['thumbnail'] = f"https://img.youtube.com/vi/{video_id}/mqdefault.jpg"
-        return info
-    # Spotify
+        info['embed'] = f"https://www.youtube-nocookie.com/embed/{video_id}"
+        info['thumbnail'] = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
     spot_match = re.search(r"open\.spotify\.com/(track|album|playlist)/([A-Za-z0-9]+)", url)
     if spot_match:
         stype, sid = spot_match.groups()
         info['embed'] = f"https://open.spotify.com/embed/{stype}/{sid}"
-        return info
     return info
 
 class Genre(models.Model):
-    name = models.CharField(max_length=100)
-    slug = models.SlugField(unique=True)
+    name = models.CharField(max_length=100); slug = models.SlugField(max_length=100, unique=True)
     def __str__(self): return self.name
 
 class Sub(models.Model):
-    name = models.CharField(max_length=50, unique=True)
-    slug = models.SlugField(unique=True)
-    description = models.TextField(blank=True)
-    creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name="created_subs")
-    members = models.ManyToManyField(User, related_name="joined_subs", blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    name = models.CharField(max_length=100, unique=True); slug = models.SlugField(max_length=100, unique=True)
+    description = models.TextField(blank=True); creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name="created_subs")
+    members = models.ManyToManyField(User, related_name="joined_subs", blank=True); created_at = models.DateTimeField(auto_now_add=True)
     def __str__(self): return f"s/{self.slug}"
 
 class Artist(models.Model):
-    name = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True)
+    name = models.CharField(max_length=200); slug = models.SlugField(max_length=200, unique=True, blank=True)
     genres = models.ManyToManyField("Genre", blank=True)
+    def save(self, *args, **kwargs):
+        if not self.slug: self.slug = slugify(self.name)[:190]
+        super().save(*args, **kwargs)
     def __str__(self): return self.name
 
 class Post(models.Model):
-    search_vector = models.TextField(null=True, blank=True)
-    semantic_data = models.JSONField(default=dict, blank=True)
-    embedding = models.JSONField(null=True, blank=True)
-    audio_features = models.JSONField(null=True, blank=True)
-    title = models.CharField(max_length=200)
-    url = models.URLField()
-    embed_url = models.URLField(blank=True, null=True)
+    title = models.CharField(max_length=200); url = models.URLField(); embed_url = models.URLField(blank=True, null=True)
     thumbnail = models.URLField(blank=True, null=True)
-    content = models.TextField(blank=True, null=True)
-    image = models.ImageField(upload_to="post_images/", blank=True, null=True)
+    embedding = models.JSONField(null=True, blank=True) # Campo de IA
     author = models.ForeignKey(User, on_delete=models.CASCADE)
-    score = models.IntegerField(default=0)
-    sub = models.ForeignKey(Sub, on_delete=models.CASCADE, related_name="posts", null=True)
+    score = models.IntegerField(default=0); sub = models.ForeignKey(Sub, on_delete=models.CASCADE, related_name="posts", null=True)
     genre = models.ForeignKey(Genre, on_delete=models.SET_NULL, null=True, blank=True, related_name="posts")
     artist = models.ForeignKey(Artist, on_delete=models.SET_NULL, null=True, blank=True, related_name="posts")
+    audio_features = models.JSONField(default=dict, blank=True); semantic_data = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
         media = get_media_info(self.url)
         if not self.embed_url: self.embed_url = media['embed']
         if not self.thumbnail: self.thumbnail = media['thumbnail']
-        self.semantic_data = build_semantic_data(self)
+        
+        # Enriquecimento Semântico via Last.fm
+        if " - " in self.title:
+            try:
+                from .lastfm import get_enriched_metadata
+                parts = self.title.split(" - ")
+                enriched = get_enriched_metadata(parts[0].strip(), parts[1].strip())
+                if enriched: self.semantic_data.update(enriched)
+                if not self.artist:
+                    art_obj, _ = Artist.objects.get_or_create(name=parts[0].strip())
+                    self.artist = art_obj
+            except: pass
         super().save(*args, **kwargs)
-
     def __str__(self): return self.title
 
 class Vote(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="votes")
+    user = models.ForeignKey(User, on_delete=models.CASCADE); post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="votes")
     class Meta: unique_together = ("user", "post")
 
 class Comment(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments")
     author = models.ForeignKey(User, on_delete=models.CASCADE)
-    text = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE, related_name="replies")
+    text = models.TextField(); score = models.IntegerField(default=0); created_at = models.DateTimeField(auto_now_add=True)
+
+class CommentVote(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE); comment = models.ForeignKey(Comment, on_delete=models.CASCADE, related_name="comment_votes")
+    class Meta: unique_together = ("user", "comment")
 
 class SavedPost(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="saved_posts")
-    post = models.ForeignKey(Post, on_delete=models.CASCADE)
-    created_at = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="saved_posts"); post = models.ForeignKey(Post, on_delete=models.CASCADE); created_at = models.DateTimeField(auto_now_add=True)
     class Meta: unique_together = ("user", "post")
 
 class Profile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
-    last_seen = models.DateTimeField(default=timezone.now)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile"); last_seen = models.DateTimeField(default=timezone.now)
 
 class Notification(models.Model):
     TYPES = (("vote", "Vote"), ("comment", "Comment"))
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
-    actor = models.ForeignKey(User, on_delete=models.CASCADE)
-    notification_type = models.CharField(max_length=10, choices=TYPES)
-    post = models.ForeignKey(Post, on_delete=models.CASCADE)
-    is_read = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
+    actor = models.ForeignKey(User, on_delete=models.CASCADE); notification_type = models.CharField(max_length=10, choices=TYPES)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE); is_read = models.BooleanField(default=False); created_at = models.DateTimeField(auto_now_add=True)
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
-    if created: Profile.objects.create(user=instance)
+    if created: Profile.objects.get_or_create(user=instance)
 
 class UserEvent(models.Model):
-    TYPES = (("view", "View"), ("click", "Click"), ("upvote", "Upvote"))
+    user = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    post = models.ForeignKey('Post', on_delete=models.CASCADE)
+    event_type = models.CharField(max_length=20)
+    value = models.FloatField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class BanditArm(models.Model):
+    key = models.CharField(max_length=100, unique=True)
+    
+    count = models.IntegerField(default=1)
+
+    def __str__(self):
+        return f"{self.key} ({self.reward}/{self.count})"
+
+class BanditArm(models.Model):
+    key = models.CharField(max_length=100, unique=True)
+    reward = models.FloatField(default=0)
+    count = models.IntegerField(default=1)
+
+    def __str__(self):
+        return f"{self.key} ({self.reward}/{self.count})"
+
+class PostContext(models.Model):
+    post = models.OneToOneField("Post", on_delete=models.CASCADE, related_name="context")
+
+    mood = models.CharField(max_length=100, blank=True)
+    energy = models.FloatField(default=0)
+    city = models.CharField(max_length=100, blank=True)
+    time_of_day = models.CharField(max_length=50, blank=True)
+
+    tags = models.JSONField(default=list)
+
+    def __str__(self):
+        return f"{self.post} context"
+
+class Event(models.Model):
+    title = models.CharField(max_length=255)
+    city = models.CharField(max_length=100)
+    date = models.DateTimeField()
+
+    created_by = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self.title
+
+from django.db import models
+from django.contrib.auth.models import User
+
+class Event(models.Model):
+    title = models.CharField(max_length=255)
+    city = models.CharField(max_length=100)
+    venue = models.CharField(max_length=255, blank=True)
+    date = models.DateTimeField()
+
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self.title
+
+
+class EventInteraction(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    post = models.ForeignKey(Post, on_delete=models.CASCADE)
-    event_type = models.CharField(max_length=10, choices=TYPES)
+    event = models.ForeignKey("music.Event", on_delete=models.CASCADE)
+
+    interaction_type = models.CharField(max_length=50)  # going, view, save
     created_at = models.DateTimeField(auto_now_add=True)

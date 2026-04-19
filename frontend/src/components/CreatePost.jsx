@@ -1,189 +1,70 @@
-import { useState } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import axios from "axios"
-import { useTranslation } from "react-i18next"
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
+import { Link as LinkIcon, AlignLeft, Hash, Send } from "lucide-react";
+import SearchableSelect from "./SearchableSelect";
 
 export default function CreatePost() {
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("link");
+  const [formData, setFormData] = useState({ title: "", url: "", content: "", sub_id: "", genre_id: "", tags: "" });
 
-  const { t } = useTranslation()
-  const queryClient = useQueryClient()
-
-  const [title, setTitle] = useState("")
-  const [url, setUrl] = useState("")
-  const [content, setContent] = useState("")
-  const [image, setImage] = useState(null)
-  const [genre, setGenre] = useState("")
-  const [sub, setSub] = useState("")
-
-  const { data: genresData = [] } = useQuery({
-    queryKey: ["genres"],
-    queryFn: () => axios.get("/genres").then(res => res.data)
-  })
-
-  const { data: subsData = [] } = useQuery({
-    queryKey: ["subs"],
-    queryFn: () => axios.get("/subs").then(res => res.data)
-  })
-
-  const genres = Array.isArray(genresData) ? genresData : []
-  const subs = Array.isArray(subsData) ? subsData : []
+  const { data: subs = [] } = useQuery({ queryKey: ["subs"], queryFn: () => axios.get("/subs").then(res => res.data) });
+  const { data: genres = [] } = useQuery({ queryKey: ["genres"], queryFn: () => axios.get("/genres").then(res => res.data) });
 
   const createMutation = useMutation({
-
-    mutationFn: (formData) => axios.post("/posts", formData),
-
-                                     onSuccess: () => {
-
-                                       queryClient.invalidateQueries(["posts"])
-
-                                       setTitle("")
-                                       setUrl("")
-                                       setContent("")
-                                       setImage(null)
-                                       setGenre("")
-                                       setSub("")
-
-                                     }
-
-  })
-
-  const handleSubmit = (e) => {
-
-    e.preventDefault()
-
-    const formData = new FormData()
-
-    formData.append("title", title)
-      formData.append("url", url)
-        formData.append("content", content)
-
-          if (genre) formData.append("genre", genre)
-            if (sub) formData.append("sub", sub)
-
-              if (image) formData.append("image", image)
-
-                createMutation.mutate(formData)
-
-  }
+    mutationFn: (payload) => axios.post("/posts", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["posts"]);
+      setFormData({ title: "", url: "", content: "", sub_id: "", genre_id: "", tags: "" });
+      alert("Postado!");
+    }
+  });
 
   return (
+    <div className="bg-[#0f1115] border border-white/10 rounded-[32px] overflow-hidden shadow-2xl mb-12 transition-all">
+      <div className="flex border-b border-white/5 bg-black/20">
+        <button onClick={() => setActiveTab("link")} className={`flex-1 py-4 text-[10px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-2 ${activeTab==='link' ? 'bg-green-600 text-white' : 'text-slate-500'}`}><LinkIcon size={14}/> Link</button>
+        <button onClick={() => setActiveTab("text")} className={`flex-1 py-4 text-[10px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-2 ${activeTab==='text' ? 'bg-green-600 text-white' : 'text-slate-500'}`}><AlignLeft size={14}/> Resenha</button>
+      </div>
 
-    <div className="bg-white/80 dark:bg-[#0f1115] border border-white/10 rounded-2xl p-6 mb-10">
+      <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(formData); }} className="p-8 space-y-6">
+        <div className="space-y-1">
+          <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Título</label>
+          <input required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="Artista - Música" className="w-full bg-black/20 border border-white/10 p-4 rounded-2xl text-sm outline-none focus:border-green-500"/>
+        </div>
 
-    <h3 className="font-black text-lg mb-4">
+        {activeTab === "link" && (
+          <div className="space-y-1">
+            <label className="text-[10px] font-black uppercase text-slate-500 ml-1">URL (YouTube / Spotify)</label>
+            <input required value={formData.url} onChange={e => setFormData({...formData, url: e.target.value})} placeholder="https://..." className="w-full bg-black/20 border border-white/10 p-4 rounded-2xl text-sm outline-none focus:border-green-500 italic text-green-500"/>
+          </div>
+        )}
 
-    🎧 {t("create_post", "Compartilhar música")}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <SearchableSelect 
+            label="Comunidade" 
+            options={subs} 
+            placeholder="Buscar s/..." 
+            onSelect={(id) => setFormData({...formData, sub_id: id})} 
+          />
+          <SearchableSelect 
+            label="Gênero Principal" 
+            options={genres} 
+            placeholder="Buscar gênero..." 
+            onSelect={(id) => setFormData({...formData, genre_id: id})} 
+          />
+        </div>
 
-    </h3>
+        <div className="space-y-1">
+          <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Resenha / Descrição (Opcional)</label>
+          <textarea value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} rows="3" className="w-full bg-black/20 border border-white/10 p-4 rounded-2xl text-sm outline-none focus:border-green-500 resize-none"/>
+        </div>
 
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-
-    {/* título */}
-
-    <input
-    type="text"
-    placeholder="Aphex Twin - Windowlicker"
-    value={title}
-    onChange={(e)=>setTitle(e.target.value)}
-    required
-    className="p-3 rounded-xl bg-white/70 dark:bg-black/30 border border-white/10"
-    />
-
-    {/* url */}
-
-    <input
-    type="url"
-    placeholder="YouTube / Spotify / SoundCloud URL"
-    value={url}
-    onChange={(e)=>setUrl(e.target.value)}
-    required
-    className="p-3 rounded-xl bg-white/70 dark:bg-black/30 border border-white/10"
-    />
-
-    {/* conteúdo */}
-
-    <textarea
-    placeholder="Comentário (opcional)"
-    value={content}
-    onChange={(e)=>setContent(e.target.value)}
-    className="p-3 rounded-xl bg-white/70 dark:bg-black/30 border border-white/10"
-    />
-
-    {/* gênero */}
-
-    <select
-    value={genre}
-    onChange={(e)=>setGenre(e.target.value)}
-    className="p-3 rounded-xl bg-white/70 dark:bg-black/30 border border-white/10"
-    >
-
-    <option value="">
-    {t("genre", "Gênero")}
-    </option>
-
-    {genres.map(g => (
-
-      <option key={g.id} value={g.id}>
-
-      {g.name}
-
-      </option>
-
-    ))}
-
-    </select>
-
-    {/* comunidade */}
-
-    <select
-    value={sub}
-    onChange={(e)=>setSub(e.target.value)}
-    className="p-3 rounded-xl bg-white/70 dark:bg-black/30 border border-white/10"
-    >
-
-    <option value="">
-    {t("community", "Comunidade")}
-    </option>
-
-    {subs.map(s => (
-
-      <option key={s.id} value={s.id}>
-
-      s/{s.slug}
-
-      </option>
-
-    ))}
-
-    </select>
-
-    {/* imagem */}
-
-    <input
-    type="file"
-    onChange={(e)=>setImage(e.target.files[0])}
-    className="text-sm"
-    />
-
-    {/* botão */}
-
-    <button
-    type="submit"
-    disabled={createMutation.isPending}
-    className="bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700 transition"
-    >
-
-    {createMutation.isPending
-      ? t("posting","Postando...")
-      : t("post","Postar")
-    }
-
-    </button>
-
-    </form>
-
+        <button type="submit" className="w-full bg-green-600 text-white font-black uppercase py-5 rounded-2xl hover:bg-green-500 transition-all shadow-xl shadow-green-600/20 active:scale-95">
+          {createMutation.isPending ? "Publicando..." : "Publicar na Music Page"}
+        </button>
+      </form>
     </div>
-
-  )
-
+  );
 }

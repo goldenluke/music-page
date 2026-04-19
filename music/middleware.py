@@ -6,9 +6,19 @@ class UpdateLastSeenMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        if request.user.is_authenticated:
-            # Usamos update para ser mais rápido e não disparar signals desnecessários
+        # Primeiro, processa o restante da requisição (incluindo a autenticação)
+        response = self.get_response(request)
+        
+        # Agora, após o AuthenticationMiddleware ter rodado, o user existe
+        if hasattr(request, 'user') and request.user.is_authenticated:
             Profile.objects.filter(user=request.user).update(last_seen=timezone.now())
         
-        response = self.get_response(request)
         return response
+
+class ApiCsrfExemptMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+    def __call__(self, request):
+        if request.path.startswith('/api/'):
+            setattr(request, '_dont_enforce_csrf_checks', True)
+        return self.get_response(request)

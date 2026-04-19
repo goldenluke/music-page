@@ -30,58 +30,97 @@ if __name__ == '__main__':
 
 import os
 import django
-
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
-django.setup()
-
-from music.models import Genre, Sub, User
+import requests
 from django.utils.text import slugify
 
-def setup_platform():
-    print("🚀 Iniciando Setup da Music Page...")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
+django.setup()
+
+from django.contrib.auth.models import User
+from music.models import Post, Artist, Genre, Sub
+from music.embeddings import get_embedding
+
+SYSTEM_USER, _ = User.objects.get_or_create(username="system", defaults={"is_staff": True})
+
+SPOTIFY_CLIENT_ID = "114c4b39adaa4e56ba1fd39e367c6625"
+SPOTIFY_CLIENT_SECRET = "742ba8d929b54b0ca08bfd0d982a67f9"
+YOUTUBE_API_KEY = "AIzaSyDYiaoq-V9n0-CHNUF3cRRMoNsKyIpXfgg"
+
+QUERIES = ["techno", "house", "rock", "hip hop"]
+
+def get_token():
+    r = requests.post("https://accounts.spotify.com/api/token",
+        data={"grant_type": "client_credentials"},
+        auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET))
+    return r.json()["access_token"]
+
+def create_post(data):
+    title = data["title"]
+    if Post.objects.filter(title=title).exists():
+        print(f"⚠ duplicado: {title}")
+        return
+
+    # Correção do lookup do Artista via Slug
+    art_name = data["artist"]
+    art_slug = slugify(art_name) or "unknown"
+    artist, _ = Artist.objects.get_or_create(slug=art_slug, defaults={"name": art_name})
     
-    # 1. Criar usuário administrador (se não existir)
-    admin, created = User.objects.get_or_create(username='admin')
-    if created:
-        admin.set_password('admin123')
-        admin.is_superuser = True
-        admin.is_staff = True
-        admin.save()
-        print("✅ Usuário 'admin' criado.")
+    gen_name = data.get("genre", "music")
+    genre, _ = Genre.objects.get_or_create(slug=slugify(gen_name), defaults={"name": gen_name})
+    
+    # Garante uma Sub padrão
+    sub, _ = Sub.objects.get_or_create(slug="geral", defaults={"name": "Geral", "creator": SYSTEM_USER})
 
-    # 2. Criar Comunidades (Subs) Iniciais
-    subs = [
-        {"name": "Geral", "desc": "A comunidade principal para todos os gostos."},
-        {"name": "Lançamentos", "desc": "Apenas músicas que saíram essa semana."},
-        {"name": "Underground", "desc": "Para quem gosta de garimpar o que ninguém ouve."},
-        {"name": "Produção Musical", "desc": "Dicas de DAW, VSTs e mixagem."},
-    ]
+    emb = get_embedding(title)
+    emb_list = emb.tolist() if hasattr(emb, 'tolist') else []
 
-    for s in subs:
-        obj, created = Sub.objects.get_or_create(
-            slug=slugify(s['name']),
-            defaults={'name': s['name'], 'description': s['desc'], 'creator': admin}
-        )
-        if created: print(f"✅ Sub s/{obj.slug} criada.")
+    Post.objects.create(
+        author=SYSTEM_USER,
+        title=title,
+        artist=artist,
+        genre=genre,
+        sub=sub,
+        url=data.get("url", "https://youtube.com"),
+        semantic_data=data.get("semantic_data", {}),
+        embedding=emb_list
+    )
+    print(f"✅ criado: {title}")
 
-    # 3. Criar Gêneros Musicais
-    generos = [
-        "Techno", "House", "Lo-fi", "Hip Hop", "Trap", "Indie Rock", 
-        "Heavy Metal", "MPB", "Samba", "Funk", "Jazz", "Classical", 
-        "Reggae", "Synthwave", "Drum & Bass", "R&B", "Folk"
-    ]
+def run():
+    token = get_token()
+    for q in QUERIES:
+        print(f"\n🔎 {q}")
+        # SPOTIFY
+        r = requests.get("https://api.spotify.com/v1/search",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"q": q, "type": "track", "limit": 5})
+        
+        if r.status_code == 200:
+            for t in r.json()["tracks"]["items"]:
+                create_post({
+                    "title": f"{t['artists'][0]['name']} - {t['name']}",
+                    "artist": t['artists'][0]['name'],
+                    "url": t['external_urls']['spotify'],
+                    "semantic_data": {"source": "spotify"}
+                })
 
-    for g in generos:
-        obj, created = Genre.objects.get_or_create(
-            name=g,
-            defaults={'slug': slugify(g)}
-        )
-        if created: print(f"✅ Gênero {g} adicionado.")
+        # YOUTUBE
+        r = requests.get("https://www.googleapis.com/youtube/v3/search",
+            params={"q": q, "key": YOUTUBE_API_KEY, "part": "snippet", "type": "video", "maxResults": 5})
+        
+        if r.status_code == 200:
+            for v in r.json()["items"]:
+                title = v["snippet"]["title"]
+                create_post({
+                    "title": title,
+                    "artist": title.split("-")[0].strip() if "-" in title else "Unknown",
+                    "url": f"https://www.youtube.com/watch?v={v['id']['videoId']}",
+                    "semantic_data": {"source": "youtube"}
+                })
 
-    print("\n🎉 Setup concluído! Rode o servidor e divirta-se.")
+if __name__ == "__main__":
+    run()
 
-if __name__ == '__main__':
-    setup_platform()
 
 # === Fim do arquivo: ./popula_banco.py ===
 
@@ -115,6 +154,8 @@ application = get_asgi_application()
 
 # === Início do arquivo: ./core/settings.py ===
 
+import dotenv
+dotenv.load_dotenv()
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -135,11 +176,13 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'music.middleware.ApiCsrfExemptMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
+    'music.middleware.UpdateLastSeenMiddleware',
 ]
 
 ROOT_URLCONF = 'core.urls'
@@ -192,6 +235,90 @@ TEMPLATES = [
 CORS_ALLOW_ALL_ORIGINS = True
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# Configurações de CORS e CSRF para o Frontend Vite
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
+
+# --- CONFIGURAÇÕES PARA NGROK ---
+ALLOWED_HOSTS = ["musicabr.ngrok.app", "localhost", "127.0.0.1"]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://musicabr.ngrok.app",
+]
+
+# Informa ao Django que ele está atrás de um proxy reverso (ngrok) que usa HTTPS
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# --- CORREÇÃO DE AUTENTICAÇÃO E CSRF PARA NGROK ---
+ALLOWED_HOSTS = ["*"] # Em dev com ngrok, o host muda com frequência
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://musicabr.ngrok.app",
+]
+
+# Configurações de Cookie para Sessão e CSRF (Obrigatório para HTTPS)
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SAMESITE = 'None'
+
+# Garante que o Django aceite o login através do proxy do ngrok
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# --- CONFIGURAÇÃO FINAL DE SEGURANÇA E CONEXÃO ---
+
+INSTALLED_APPS += ['corsheaders']
+
+# O CorsMiddleware deve vir o mais alto possível, antes do CommonMiddleware
+MIDDLEWARE.insert(0, 'corsheaders.middleware.CorsMiddleware')
+
+# Domínios que podem acessar a API (Frontend)
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "https://musicabr.ngrok.app",
+]
+
+# Domínios confiáveis para enviar formulários (POST)
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "https://musicabr.ngrok.app",
+]
+
+# Permitir envio de Cookies de autenticação
+CORS_ALLOW_CREDENTIALS = True
+
+# Ajustes de Cookie para funcionar em ambientes mistos (HTTP local + HTTPS ngrok)
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SECURE = False  # Mantenha False para conseguir logar no localhost:3001
+CSRF_COOKIE_SECURE = False
+
+# Se estiver acessando via ngrok (HTTPS), o Django precisa saber
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Ajustes para permitir login sem CSRF em ambiente de desenvolvimento
+CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_HTTPONLY = False
+
+# --- CORREÇÃO DE COOKIES PARA NGROK E LOCALHOST ---
+CSRF_TRUSTED_ORIGINS = [
+    "https://musicabr.ngrok.app",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
+
+# Permitir que cookies de sessão funcionem entre o túnel Ngrok e o Localhost
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SECURE = False  # Mude para True se for usar APENAS Ngrok
+CSRF_COOKIE_SECURE = False
+
 
 # === Fim do arquivo: ./core/settings.py ===
 
@@ -201,20 +328,13 @@ from django.contrib import admin
 from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
-from music.api import api # Importa a instância da sua API
-from django.http import HttpResponse
-
-def home(request):
-    return HttpResponse("Music Page API está rodando 🚀")
+from music.api import api 
 
 urlpatterns = [
-    path('', home),
     path('admin/', admin.site.urls),
     path("api/", api.urls),
 ]
 
-# Configuração para servir arquivos de mídia (fotos/imagens) durante o desenvolvimento.
-# Sem as linhas abaixo, o link da imagem que o Django retorna não funcionará no navegador.
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
@@ -395,41 +515,59 @@ admin.site.register(Notification)
 
 # === Início do arquivo: ./music/analytics.py ===
 
-from django.db.models import Count
-from .models import UserEvent, Post, Artist
+from django.db.models import Count, Avg, FloatField, Sum
+from django.db.models.functions import Cast, Coalesce
+from django.db.models.fields.json import KeyTextTransform
+from django.utils import timezone
+from datetime import timedelta
+from .models import UserEvent, Post, User
+from collections import Counter
 
-def get_analytics():
-    total_events = UserEvent.objects.count()
-
-    top_posts = (
-        Post.objects
-        .annotate(events=Count("userevent"))
-        .order_by("-events")[:5]
+def get_comprehensive_metrics(days=7):
+    start_date = timezone.now() - timedelta(days=days)
+    
+    # 1. Atividade Diária
+    events = UserEvent.objects.filter(created_at__gte=start_date)
+    daily_activity = list(
+        events.extra(select={'day': "date(created_at)"})
+        .values('day')
+        .annotate(count=Count('id'))
+        .order_by('day')
     )
 
-    top_artists = (
-        Artist.objects
-        .annotate(events=Count("posts__userevent"))
-        .order_by("-events")[:5]
-    )
+    # 2. DNA Sônico
+    def get_avg_feature(feature_name):
+        return Avg(Cast(KeyTextTransform(feature_name, 'audio_features'), FloatField()))
 
-    event_types = (
-        UserEvent.objects
-        .values("event_type")
-        .annotate(count=Count("id"))
+    audio_dna_raw = Post.objects.filter(audio_features__isnull=False).aggregate(
+        energy=get_avg_feature('energy'),
+        danceability=get_avg_feature('danceability'),
+        valence=get_avg_feature('valence'),
+        speechiness=get_avg_feature('speechiness'),
+        acousticness=get_avg_feature('acousticness')
+    )
+    audio_dna = {k: (v or 0) for k, v in audio_dna_raw.items()}
+
+    # 3. Gêneros
+    all_tags = []
+    for p in Post.objects.filter(created_at__gte=start_date).exclude(semantic_data__tags=[]):
+        all_tags.extend(p.semantic_data.get('tags', []))
+    genre_dist = dict(Counter(all_tags).most_common(10))
+
+    # 4. Scouts
+    top_scouts = list(
+        User.objects.annotate(total_score=Coalesce(Sum('post__score'), 0))
+        .order_by('-total_score')[:5]
+        .values('username', 'total_score')
     )
 
     return {
-        "total_events": total_events,
-        "top_posts": [
-            {"title": p.title, "events": p.events}
-            for p in top_posts
-        ],
-        "top_artists": [
-            {"name": a.name, "events": a.events}
-            for a in top_artists
-        ],
-        "event_types": list(event_types)
+        "daily_activity": daily_activity,
+        "audio_dna": audio_dna,
+        "genre_dist": genre_dist,
+        "top_scouts": top_scouts,
+        "total_catalog": Post.objects.count(),
+        "period_events": events.count()
     }
 
 
@@ -437,609 +575,101 @@ def get_analytics():
 
 # === Início do arquivo: ./music/api.py ===
 
-from .search import search_posts
-from ninja import NinjaAPI, Schema, File, Form
-from ninja.files import UploadedFile
-from ninja.security import django_auth
-from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth.models import User
+from ninja import NinjaAPI, Schema
 from django.shortcuts import get_object_or_404
-from django.db.models import Sum, Count
-from django.utils import timezone
-from datetime import timedelta
-from .models import Post, Vote, Genre, Comment, SavedPost, Profile, Notification, Sub
+from django.contrib.auth.models import User
+from .models import Post, Sub, Genre, UserEvent, Artist
 from typing import List, Optional
-from django.db.models import F
-from django.db.models.functions import Now
 
-
-# Inicialização da API
 api = NinjaAPI()
 
-from ninja import Schema
-
-class ArtistSchema(Schema):
-
-    id: int
-    name: str
-    slug: str
-
-@api.get("/artists/{slug}")
-def get_artist(request, slug: str):
-
-    artist = Artist.objects.get(slug=slug)
-
-    posts = Post.objects.filter(artist=artist).order_by("-score")[:20]
-
-    genres = artist.genres.all()
-
-    related_artists = Artist.objects.filter(
-        genres__in=genres
-    ).exclude(id=artist.id).distinct()[:10]
-
-    subs = Sub.objects.filter(posts__artist=artist).distinct()[:10]
-
-    return {
-
-        "artist": {
-            "name": artist.name,
-            "slug": artist.slug
-        },
-
-        "posts": [
-
-            {
-                "id": p.id,
-                "title": p.title,
-                "score": p.score
-            }
-
-            for p in posts
-        ],
-
-        "genres": [
-            g.name for g in genres
-        ],
-
-        "related_artists": [
-            {
-                "name": a.name,
-                "slug": a.slug
-            }
-            for a in related_artists
-        ],
-
-        "subs": [
-            s.slug for s in subs
-        ]
-    }
-
-# --- 1. SCHEMAS (Definições de Dados) ---
-
-class LoginPayload(Schema):
-    username: str
-    password: str
-
-class RegisterIn(Schema):
-    username: str
-    email: str
-    password: str
-
-class GenreOut(Schema):
-    id: int
-    name: str
-    slug: str
-
-class SubOut(Schema):
-    id: int
-    name: str
-    slug: str
-    description: str
-    member_count: int
-    is_member: bool = False
-
-    @staticmethod
-    def resolve_member_count(obj):
-        return obj.members.count()
-
-    @staticmethod
-    def resolve_is_member(obj, context):
-        request = context.get('request')
-        if request and request.user.is_authenticated:
-            return obj.members.filter(id=request.user.id).exists()
-        return False
-
-class CommentIn(Schema):
-    text: str
-
-class CommentSchema(Schema):
-    id: int
-    text: str
-    author_username: str
-    created_at: str
-
-    @staticmethod
-    def resolve_author_username(obj):
-        return obj.author.username
-    
-    @staticmethod
-    def resolve_created_at(obj):
-        return obj.created_at.strftime("%H:%M - %d/%m")
-
-class PostSchema(Schema):
+# SCHEMAS
+class PostOut(Schema):
     id: int
     title: str
-    url: str
-    content: Optional[str] = None
-    image: Optional[str] = None
     score: int
     author_username: str = None
-    genre_name: Optional[str] = None
     sub_slug: str = None
-    voted: bool = False
-    is_saved: bool = False
-
+    thumbnail: Optional[str] = None
+    audio_features: Optional[dict] = None
+    semantic_data: Optional[dict] = None
     @staticmethod
-    def resolve_author_username(obj):
-        return obj.author.username
-
+    def resolve_author_username(obj): return obj.author.username
     @staticmethod
-    def resolve_genre_name(obj):
-        return obj.genre.name if obj.genre else None
+    def resolve_sub_slug(obj): return obj.sub.slug if obj.sub else "geral"
 
-    @staticmethod
-    def resolve_sub_slug(obj):
-        return obj.sub.slug if obj.sub else "geral"
+# ROTAS
+@api.get("/posts", response=List[PostOut])
+def list_posts(request, **kwargs):
+    return Post.objects.all().order_by("-created_at")
 
-    @staticmethod
-    def resolve_image(obj):
-        return obj.image.url if obj.image else None
-
-    @staticmethod
-    def resolve_voted(obj, context):
-        request = context.get('request')
-        if request and request.user.is_authenticated:
-            return Vote.objects.filter(user=request.user, post=obj).exists()
-        return False
-
-    @staticmethod
-    def resolve_is_saved(obj, context):
-        request = context.get('request')
-        if request and request.user.is_authenticated:
-            return SavedPost.objects.filter(user=request.user, post=obj).exists()
-        return False
-
-class UserProfileOut(Schema):
-    username: str
-    karma: int
-    joined_at: str
-
-class StatsOut(Schema):
-    total_members: int
-    online_count: int
-
-class NotificationOut(Schema):
-    id: int
-    actor_username: str
-    notification_type: str
-    post_title: str
-    is_read: bool
-    created_at: str
-
-    @staticmethod
-    def resolve_actor_username(obj): return obj.actor.username
-    @staticmethod
-    def resolve_post_title(obj): return obj.post.title
-    @staticmethod
-    def resolve_created_at(obj): return obj.created_at.strftime("%H:%M")
-
-# --- 2. ROTAS DE AUTENTICAÇÃO ---
-
-@api.post("/login")
-def login_user(request, data: LoginPayload):
-    user = authenticate(username=data.username, password=data.password)
-    if user:
-        login(request, user)
-        return {"success": True, "username": user.username}
-    return api.create_response(request, {"detail": "Incorreto"}, status=401)
-
-@api.post("/register")
-def register_user(request, data: RegisterIn):
-    if User.objects.filter(username=data.username).exists():
-        return api.create_response(request, {"detail": "Username já existe"}, status=400)
-    user = User.objects.create_user(username=data.username, email=data.email, password=data.password)
-    login(request, user)
-    return {"success": True, "username": user.username}
-
-@api.post("/logout")
-def logout_user(request):
-    logout(request)
-    return {"success": True}
-
-@api.get("/me", auth=django_auth)
-def me(request):
-    return {"username": request.auth.username, "id": request.auth.id}
-
-# --- 3. ROTAS DE COMUNIDADES (SUBS) ---
-
-@api.get("/subs", response=List[SubOut])
-def list_subs(request):
-    return Sub.objects.all()
-
-@api.get("/subs/{slug}", response=SubOut)
-def get_sub(request, slug: str):
-    return get_object_or_404(Sub, slug=slug)
-
-@api.post("/subs/{slug}/join", auth=django_auth)
-def join_sub(request, slug: str):
-    sub = get_object_or_404(Sub, slug=slug)
-    if sub.members.filter(id=request.auth.id).exists():
-        sub.members.remove(request.auth)
-        joined = False
-    else:
-        sub.members.add(request.auth)
-        joined = True
-    return {"joined": joined}
-
-# --- 4. ROTAS DE POSTS (Feed, Busca, Gênero, Sub e Paginação) ---
-
-@api.get("/posts", response=List[PostSchema])
-def list_posts(
-    request,
-    sort: str = "latest",
-    search: Optional[str] = None,
-    genre: Optional[str] = None,
-    sub_slug: Optional[str] = None,
-    limit: int = 10,
-    offset: int = 0
-):
-
-    posts = Post.objects.all()
-
-    if search:
-        posts = posts.filter(title__icontains=search)
-
-    if genre:
-        posts = posts.filter(genre__slug=genre)
-
-    if sub_slug:
-        posts = posts.filter(sub__slug=sub_slug)
-
-    # Ordenação
-    if sort == "top":
-        posts = posts.order_by("-score")
-
-    elif sort == "trending":
-        posts = posts.annotate(
-            age_hours=(Now() - F("created_at"))
-        ).order_by("-score", "-created_at")
-
-    else:
-        posts = posts.order_by("-created_at")
-
-    return posts[offset: offset + limit]
-
-@api.post("/posts", auth=django_auth)
-def create_post(
-    request, 
-    title: str = Form(...), 
-    url: str = Form(...), 
-    sub_id: int = Form(...), # Agora obrigatório escolher a comunidade
-    content: str = Form(""), 
-    genre_id: Optional[int] = Form(None),
-    image: UploadedFile = File(None)
-):
-    post = Post.objects.create(
-        title=title, url=url, content=content,
-        sub_id=sub_id, genre_id=genre_id, image=image, author=request.auth
-    )
-    return {"id": post.id}
-
-# --- 5. INTERAÇÕES: VOTOS, COMENTÁRIOS E SAVED ---
-
-@api.post("/posts/{post_id}/upvote", auth=django_auth)
-def upvote(request, post_id: int):
-    post = get_object_or_404(Post, id=post_id)
-    vote_qs = Vote.objects.filter(user=request.auth, post=post)
-    if vote_qs.exists():
-        vote_qs.delete()
-        post.score -= 1
-        voted = False
-    else:
-        Vote.objects.create(user=request.auth, post=post)
-        post.score += 1
-        voted = True
-    post.save()
-    return {"score": post.score, "voted": voted}
-
-@api.post("/posts/{post_id}/save", auth=django_auth)
-def toggle_save_post(request, post_id: int):
-    post = get_object_or_404(Post, id=post_id)
-    saved_qs = SavedPost.objects.filter(user=request.auth, post=post)
-    if saved_qs.exists():
-        saved_qs.delete()
-        saved = False
-    else:
-        SavedPost.objects.create(user=request.auth, post=post)
-        saved = True
-    return {"is_saved": saved}
-
-@api.get("/posts/{post_id}/comments", response=List[CommentSchema])
-def list_comments(request, post_id: int):
-    return Comment.objects.filter(post_id=post_id).order_by('-created_at')
-
-@api.post("/posts/{post_id}/comments", auth=django_auth)
-def create_comment(request, post_id: int, data: CommentIn):
-    post = get_object_or_404(Post, id=post_id)
-    Comment.objects.create(post=post, author=request.auth, text=data.text)
-    return {"success": True}
-
-# --- 6. PERFIS, NOTIFICAÇÕES E STATS ---
-
-@api.get("/stats", response=StatsOut)
-def get_stats(request):
-    total_members = User.objects.count()
-    limit = timezone.now() - timedelta(minutes=5)
-    online_count = Profile.objects.filter(last_seen__gte=limit).count()
-    return {"total_members": total_members, "online_count": max(online_count, 1)}
-
-@api.get("/notifications", response=List[NotificationOut], auth=django_auth)
-def list_notifications(request):
-    return Notification.objects.filter(recipient=request.auth)[:20]
-
-@api.get("/genres", response=List[GenreOut])
-def list_genres(request):
-    return Genre.objects.all()
-
-@api.get("/user/{username}", response=UserProfileOut)
-def get_user_profile(request, username: str):
-    user = get_object_or_404(User, username=username)
-    karma = Post.objects.filter(author=user).aggregate(Sum('score'))['score__sum'] or 0
-    return {
-        "username": user.username,
-        "karma": karma,
-        "joined_at": user.date_joined.strftime("%B %Y")
-    }
-
-@api.get("/user/{username}/posts", response=List[PostSchema])
-def list_user_posts(request, username: str):
-    return Post.objects.filter(author__username=username).order_by('-created_at')
-
-@api.get("/me/saved", response=List[PostSchema], auth=django_auth)
-def list_saved_posts(request):
-    saved_ids = SavedPost.objects.filter(user=request.auth).values_list('post_id', flat=True)
-    return Post.objects.filter(id__in=saved_ids).order_by('-created_at')
-
-@api.get("/notifications", response=List[NotificationOut], auth=django_auth)
-def list_notifications(request):
-    # Retorna as 15 mais recentes
-    return Notification.objects.filter(recipient=request.auth).order_by('-created_at')[:15]
-
-@api.post("/notifications/read-all", auth=django_auth)
-def mark_notifications_as_read(request):
-    Notification.objects.filter(recipient=request.auth, is_read=False).update(is_read=True)
-    return {"success": True}
-
-# music/api.py
-from django.utils.text import slugify
-
-class SubIn(Schema):
-    name: str
-    description: str
-
-@api.post("/subs", auth=django_auth)
-def create_sub(request, data: SubIn):
-    # Verifica se já existe um nome igual ou slug igual
-    slug = slugify(data.name)
-    if Sub.objects.filter(slug=slug).exists():
-        return api.create_response(request, {"detail": "Uma comunidade com este nome já existe."}, status=400)
-    
-    sub = Sub.objects.create(
-        name=data.name,
-        slug=slug,
-        description=data.description,
-        creator=request.auth
-    )
-    # Criador entra automaticamente como membro
-    sub.members.add(request.auth)
-    
-    return {"id": sub.id, "slug": sub.slug}
-
-# --- ANALYTICS ---
-from .analytics import get_analytics
-
-@api.get('/analytics')
-def analytics(request):
-    return get_analytics()
-
-
-# --- A/B TEST FEED ---
-from .abtest import assign_group
-from .pipeline import get_recommended_posts
-
-@api.get("/feed/ab", auth=django_auth)
-def ab_feed(request):
-    group = assign_group(request.auth)
-
-    if group == "A":
-        posts = Post.objects.order_by("-score")[:20]
-    else:
-        posts = get_recommended_posts(request.auth)
-
-    return {
-        "group": group,
-        "posts": posts
-    }
-
-# --- TRACK EVENT ---
-from .models import UserEvent
-from django.shortcuts import get_object_or_404
-
-@api.post("/events", auth=django_auth)
-def track_event(request, post_id: int, event_type: str):
-    post = get_object_or_404(Post, id=post_id)
-
-    UserEvent.objects.create(
-        user=request.auth,
-        post=post,
-        event_type=event_type
-    )
-
-    return {"success": True}
-
-# --- SEARCH ---
-@api.get("/search")
-def search(request, q: str):
-    posts = search_posts(q)
-    return posts
-
-from .search import search_posts, autocomplete
-
-@api.get("/search")
-def search(request, q: str):
-    return search_posts(q)
-
-@api.get("/autocomplete")
-def autocomplete_api(request, q: str):
-    return autocomplete(q)
-
-from .semantic_search import semantic_search
+@api.get("/posts/{post_id}", response=PostOut)
+def get_post(request, post_id: int):
+    return get_object_or_404(Post, id=post_id)
 
 @api.get("/semantic-search")
-def semantic_search_api(request, q: str):
-    return semantic_search(q)
+def semantic_search(request, q: str):
+    # Simula busca vetorial comparando com o título
+    from .embeddings import get_embedding, cosine_similarity
+    query_emb = get_embedding(q)
+    results = []
+    for p in Post.objects.exclude(embedding=None):
+        score = cosine_similarity(query_emb, p.embedding)
+        results.append({"id": p.id, "title": p.title, "score": float(score)})
+    return sorted(results, key=lambda x: x['score'], reverse=True)[:5]
 
-from .recommender import smart_feed
+@api.get("/graph")
+def graph_related(request, node: str):
+    from .graph import related
+    return related(node)
 
-@api.get("/feed/ai", auth=django_auth)
-def ai_feed(request):
-    return smart_feed(request.auth)
+@api.get("/analytics")
+def analytics(request):
+    from .analytics import get_comprehensive_metrics
+    return get_comprehensive_metrics(days=30)
 
-from .recommender import smart_feed
+@api.get("/me")
+def me(request):
+    if request.user.is_authenticated: return {"username": request.user.username}
+    return {"username": "Guest"}
 
-@api.get("/feed/hybrid", auth=django_auth)
-def smart_feed_api(request):
-    return smart_feed(request.auth)
-
-from .recommender import smart_feed
-
-@api.get("/feed/smart", auth=django_auth)
-def smart_feed_api(request):
-    return smart_feed(request.auth)
-
-@api.post("/event")
-def track_event(request, post_id: int, event_type: str):
-    from .models import Post, UserEvent
-
-    post = Post.objects.get(id=post_id)
-
-    UserEvent.objects.create(
-        user=request.auth,
-        post=post,
-        event_type=event_type
-    )
-
-    # aprendizado simples: atualizar score
-    if event_type == "upvote":
-        post.score += 1
-        post.save()
-
-    return {"status": "ok"}
-
-from .rl import update_weights
-from .ab import assign_variant
-from .recommender import smart_feed
-
-@api.get("/feed/rl", auth=django_auth)
-def rl_feed(request):
-    variant = assign_variant(request.auth)
-
-    # pode trocar algoritmo aqui no futuro
-    feed = smart_feed(request.auth)
-
-    return {
-        "variant": variant,
-        "results": feed
-    }
-
-@api.post("/event")
-def track_event(request, post_id: int, event_type: str):
-    from .models import Post, UserEvent
-
-    post = Post.objects.get(id=post_id)
-
-    UserEvent.objects.create(
-        user=request.auth,
-        post=post,
-        event_type=event_type
-    )
-
-    # RL UPDATE 🔥
-    update_weights(event_type)
-
-    if event_type == "upvote":
-        post.score += 1
-        post.save()
-
-    return {"status": "learning"}
-
-from .youtube import search_youtube, ingest_youtube
+@api.get("/subs")
+def list_subs(request):
+    return [{"name": s.name, "slug": s.slug} for s in Sub.objects.all()]
 
 @api.get("/youtube/search")
 def yt_search(request, q: str):
+    from .youtube import search_youtube
     return search_youtube(q)
 
+class IngestIn(Schema):
+    title: str
+    url: str
+
 @api.post("/youtube/ingest")
-def yt_ingest(request, q: str):
-    return ingest_youtube(q)
+def yt_ingest(request, data: IngestIn):
+    if not request.user.is_authenticated:
+        return 401
+    from .youtube import ingest_youtube
+    post = ingest_youtube(data.title, data.url, request.user)
+    return {"id": post.id, "success": True}
 
-from .playlist import generate_playlist, next_track
+@api.get("/stats")
+def get_stats(request):
+    from django.utils import timezone
+    from datetime import timedelta
+    from django.contrib.auth.models import User
+    from .models import Profile
 
-@api.get("/playlist/ai", auth=django_auth)
-def ai_playlist(request):
-    return generate_playlist(request.auth)
+    total = User.objects.count()
+    # Define limite de 5 minutos para ser considerado online
+    limite = timezone.now() - timedelta(minutes=5)
+    online = Profile.objects.filter(last_seen__gte=limite).count()
 
-@api.get("/autoplay/next", auth=django_auth)
-def autoplay_next(request):
-    return next_track(request.auth)
-
-from .spotify import search_spotify
-
-@api.get("/spotify/search")
-def spotify_search(request, q: str):
-    return search_spotify(q)
-
-from .hybrid import hybrid_playlist, rank_playlist
-
-@api.get("/playlist/hybrid")
-def hybrid_playlist_api(request, q: str):
-    items = hybrid_playlist(q)
-    ranked = rank_playlist(q, items)
-    return ranked
-
-from .multimodal import multimodal_feed
-
-@api.get("/feed/multimodal", auth=django_auth)
-def multimodal_feed_api(request):
-    return multimodal_feed(request.auth)
-
-from .tags import enrich_tags
-
-@api.post("/lastfm/enrich")
-def lastfm_enrich(request):
-    enrich_tags()
-    return {"status": "ok"}
-
-from .mood import mood_search
-from .graph import related
-
-@api.get("/mood")
-def mood_api(request, q: str):
-    return mood_search(q)
-
-@api.get("/graph")
-def graph_api(request, node: str):
-    return related(node)
+    return {
+        "total_members": total,
+        "online_count": max(online, 1) if total > 0 else 0
+    }
 
 
 # === Fim do arquivo: ./music/api.py ===
@@ -1124,35 +754,45 @@ from .models import Post
 
 def build_graph():
     graph = defaultdict(set)
+    # Buscamos todos os posts com dados relacionados
+    posts = Post.objects.all().select_related('artist', 'genre')
 
-    for p in Post.objects.all():
-        artist = p.artist.name if p.artist else None
-        genre = p.genre.name if p.genre else None
-        tags = p.semantic_data.get("tags", []) if p.semantic_data else []
+    for p in posts:
+        # Extrair nomes em minúsculo para evitar duplicatas
+        artist = p.artist.name.lower() if p.artist else None
+        genre = p.genre.name.lower() if p.genre else None
+        tags = [t.lower() for t in p.semantic_data.get("tags", [])]
 
-        if artist and genre:
-            graph[artist].add(genre)
-            graph[genre].add(artist)
+        nodes = []
+        if artist: nodes.append(artist)
+        if genre: nodes.append(genre)
+        nodes.extend(tags)
 
-        for t in tags:
-            if artist:
-                graph[artist].add(t)
-                graph[t].add(artist)
-
-            if genre:
-                graph[genre].add(t)
-                graph[t].add(genre)
+        # Conectar cada item a todos os outros no mesmo post (Clique completo)
+        for i in range(len(nodes)):
+            for j in range(i + 1, len(nodes)):
+                u, v = nodes[i], nodes[j]
+                graph[u].add(v)
+                graph[v].add(u)
 
     return graph
 
-
-def related(node, limit=10):
+def related(node, limit=12):
+    if not node: return []
     graph = build_graph()
+    search_term = node.lower().strip()
 
-    if node not in graph:
-        return []
+    if search_term not in graph:
+        # Tenta uma busca parcial se não achar o termo exato
+        for key in graph.keys():
+            if search_term in key:
+                search_term = key
+                break
+        else:
+            return []
 
-    return list(graph[node])[:limit]
+    # Retorna os vizinhos convertidos para Título
+    return sorted([name.title() for name in list(graph[search_term])])[:limit]
 
 
 # === Fim do arquivo: ./music/graph.py ===
@@ -1221,38 +861,38 @@ import requests
 from dotenv import load_dotenv
 
 load_dotenv()
-
 API_KEY = os.getenv("LASTFM_API_KEY")
-
 BASE_URL = "http://ws.audioscrobbler.com/2.0/"
 
-def get_track_tags(artist, track):
+def get_enriched_metadata(artist_name, track_name):
+    """Busca tags, resumo e similaridade no Last.fm"""
+    if not API_KEY: return None
+    
     params = {
-        "method": "track.getTopTags",
-        "artist": artist,
-        "track": track,
+        "method": "track.getInfo",
         "api_key": API_KEY,
-        "format": "json"
+        "artist": artist_name,
+        "track": track_name,
+        "format": "json",
+        "autocorrect": 1
     }
-
-    res = requests.get(BASE_URL, params=params)
-    data = res.json()
-
-    return [t["name"] for t in data.get("toptags", {}).get("tag", [])]
-
-
-def get_artist_tags(artist):
-    params = {
-        "method": "artist.getTopTags",
-        "artist": artist,
-        "api_key": API_KEY,
-        "format": "json"
-    }
-
-    res = requests.get(BASE_URL, params=params)
-    data = res.json()
-
-    return [t["name"] for t in data.get("toptags", {}).get("tag", [])]
+    
+    try:
+        res = requests.get(BASE_URL, params=params)
+        data = res.json()
+        
+        if "track" not in data: return None
+        
+        track = data["track"]
+        return {
+            "tags": [t["name"].lower() for t in track.get("toptags", {}).get("tag", [])],
+            "listeners": track.get("listeners"),
+            "playcount": track.get("playcount"),
+            "summary": track.get("wiki", {}).get("summary", ""),
+            "duration": track.get("duration")
+        }
+    except:
+        return None
 
 
 # === Fim do arquivo: ./music/lastfm.py ===
@@ -1267,336 +907,132 @@ class UpdateLastSeenMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        if request.user.is_authenticated:
-            # Usamos update para ser mais rápido e não disparar signals desnecessários
+        # Primeiro, processa o restante da requisição (incluindo a autenticação)
+        response = self.get_response(request)
+        
+        # Agora, após o AuthenticationMiddleware ter rodado, o user existe
+        if hasattr(request, 'user') and request.user.is_authenticated:
             Profile.objects.filter(user=request.user).update(last_seen=timezone.now())
         
-        response = self.get_response(request)
         return response
+
+class ApiCsrfExemptMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+    def __call__(self, request):
+        if request.path.startswith('/api/'):
+            setattr(request, '_dont_enforce_csrf_checks', True)
+        return self.get_response(request)
+
 
 # === Fim do arquivo: ./music/middleware.py ===
 
 # === Início do arquivo: ./music/models.py ===
 
-from .semantic import build_semantic_data
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-import re
 from django.utils.text import slugify
+import re
+from .semantic import build_semantic_data
 
-
-# -----------------------------
-# Detectar artista no título
-# -----------------------------
-
-def detect_artist(title):
-
-    if " - " in title:
-
-        from .models import Artist
-
-        artist_name = title.split(" - ")[0].strip()
-
-        slug = slugify(artist_name)
-
-        artist, _ = Artist.objects.get_or_create(
-            slug=slug,
-            defaults={"name": artist_name}
-        )
-
-        return artist
-
-    return None
-
-# -----------------------------
-# Utilitário para gerar embed
-# -----------------------------
-
-def youtube_embed(url):
-    pattern = r"(?:v=|youtu.be/)([A-Za-z0-9_-]+)"
-    match = re.search(pattern, url)
-
-    if match:
-        video_id = match.group(1)
-        return f"https://www.youtube.com/embed/{video_id}"
-
-    return None
-
-
-# -----------------------------
-# Gênero musical
-# -----------------------------
+def get_media_info(url):
+    info = {'embed': None, 'thumbnail': None}
+    yt_regex = r"(?:v=|youtu\.be\/|embed\/|watch\?v=|\&v=)([A-Za-z0-9_-]{11})"
+    yt_match = re.search(yt_regex, url)
+    if yt_match:
+        video_id = yt_match.group(1)
+        info['embed'] = f"https://www.youtube-nocookie.com/embed/{video_id}"
+        info['thumbnail'] = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+    spot_match = re.search(r"open\.spotify\.com/(track|album|playlist)/([A-Za-z0-9]+)", url)
+    if spot_match:
+        stype, sid = spot_match.groups()
+        info['embed'] = f"https://open.spotify.com/embed/{stype}/{sid}"
+    return info
 
 class Genre(models.Model):
-
-    name = models.CharField(max_length=100)
-    slug = models.SlugField(unique=True)
-
-
-
-    def __str__(self):
-        return self.name
-
-
-# -----------------------------
-# Comunidades (Subs)
-# -----------------------------
+    name = models.CharField(max_length=100); slug = models.SlugField(max_length=100, unique=True)
+    def __str__(self): return self.name
 
 class Sub(models.Model):
-    name = models.CharField(max_length=50, unique=True)
-    slug = models.SlugField(unique=True)
-
-    description = models.TextField(blank=True)
-
-    creator = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name="created_subs"
-    )
-
-    members = models.ManyToManyField(
-        User,
-        related_name="joined_subs",
-        blank=True
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-
-
-    def __str__(self):
-        return f"s/{self.slug}"
-
-
-# -----------------------------
-# Artist
-# -----------------------------
+    name = models.CharField(max_length=100, unique=True); slug = models.SlugField(max_length=100, unique=True)
+    description = models.TextField(blank=True); creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name="created_subs")
+    members = models.ManyToManyField(User, related_name="joined_subs", blank=True); created_at = models.DateTimeField(auto_now_add=True)
+    def __str__(self): return f"s/{self.slug}"
 
 class Artist(models.Model):
-
-    name = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True)
-
+    name = models.CharField(max_length=200); slug = models.SlugField(max_length=200, unique=True, blank=True)
     genres = models.ManyToManyField("Genre", blank=True)
-
-    def __str__(self):
-        return self.name
-
-# -----------------------------
-# Post principal
-# -----------------------------
+    def save(self, *args, **kwargs):
+        if not self.slug: self.slug = slugify(self.name)[:190]
+        super().save(*args, **kwargs)
+    def __str__(self): return self.name
 
 class Post(models.Model):
-
-    search_vector = models.TextField(null=True, blank=True)
-    semantic_data = models.JSONField(default=dict, blank=True)
-    embedding = models.JSONField(null=True, blank=True)
-    audio_features = models.JSONField(null=True, blank=True)
-
-    title = models.CharField(max_length=200)
-    url = models.URLField()
-
-    embed_url = models.URLField(blank=True, null=True)
-    provider = models.CharField(max_length=20, blank=True, null=True)
-
-    content = models.TextField(blank=True, null=True)
-
-    image = models.ImageField(
-        upload_to="post_images/",
-        blank=True,
-        null=True
-    )
-
+    title = models.CharField(max_length=200); url = models.URLField(); embed_url = models.URLField(blank=True, null=True)
+    thumbnail = models.URLField(blank=True, null=True)
+    embedding = models.JSONField(null=True, blank=True) # Campo de IA
     author = models.ForeignKey(User, on_delete=models.CASCADE)
-
-    score = models.IntegerField(default=0)
-
-    sub = models.ForeignKey(
-        Sub,
-        on_delete=models.CASCADE,
-        related_name="posts",
-        null=True
-    )
-
-    genre = models.ForeignKey(
-        Genre,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="posts"
-    )
-
-    artist = models.ForeignKey(
-        Artist,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="posts"
-    )
-
+    score = models.IntegerField(default=0); sub = models.ForeignKey(Sub, on_delete=models.CASCADE, related_name="posts", null=True)
+    genre = models.ForeignKey(Genre, on_delete=models.SET_NULL, null=True, blank=True, related_name="posts")
+    artist = models.ForeignKey(Artist, on_delete=models.SET_NULL, null=True, blank=True, related_name="posts")
+    audio_features = models.JSONField(default=dict, blank=True); semantic_data = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
-        # semantic data
-        self.semantic_data = build_semantic_data(self)
-
-        # link artist ↔ genre
-        if self.artist and self.genre:
-            self.artist.genres.add(self.genre)
-
+        media = get_media_info(self.url)
+        if not self.embed_url: self.embed_url = media['embed']
+        if not self.thumbnail: self.thumbnail = media['thumbnail']
+        
+        # Enriquecimento Semântico via Last.fm
+        if " - " in self.title:
+            try:
+                from .lastfm import get_enriched_metadata
+                parts = self.title.split(" - ")
+                enriched = get_enriched_metadata(parts[0].strip(), parts[1].strip())
+                if enriched: self.semantic_data.update(enriched)
+                if not self.artist:
+                    art_obj, _ = Artist.objects.get_or_create(name=parts[0].strip())
+                    self.artist = art_obj
+            except: pass
         super().save(*args, **kwargs)
-
-    def __str__(self):
-        return self.title
-
-
-# -----------------------------
-# Votos
-# -----------------------------
+    def __str__(self): return self.title
 
 class Vote(models.Model):
-
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE
-    )
-
-    post = models.ForeignKey(
-        Post,
-        on_delete=models.CASCADE,
-        related_name="votes"
-    )
-
-    class Meta:
-        unique_together = ("user", "post")
-
-
-# -----------------------------
-# Comentários
-# -----------------------------
+    user = models.ForeignKey(User, on_delete=models.CASCADE); post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="votes")
+    class Meta: unique_together = ("user", "post")
 
 class Comment(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(User, on_delete=models.CASCADE)
+    parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE, related_name="replies")
+    text = models.TextField(); score = models.IntegerField(default=0); created_at = models.DateTimeField(auto_now_add=True)
 
-    post = models.ForeignKey(
-        Post,
-        on_delete=models.CASCADE,
-        related_name="comments"
-    )
-
-    author = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE
-    )
-
-    text = models.TextField()
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-
-# -----------------------------
-# Biblioteca (posts salvos)
-# -----------------------------
+class CommentVote(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE); comment = models.ForeignKey(Comment, on_delete=models.CASCADE, related_name="comment_votes")
+    class Meta: unique_together = ("user", "comment")
 
 class SavedPost(models.Model):
-
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name="saved_posts"
-    )
-
-    post = models.ForeignKey(
-        Post,
-        on_delete=models.CASCADE
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ("user", "post")
-
-
-# -----------------------------
-# Perfil (status online)
-# -----------------------------
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="saved_posts"); post = models.ForeignKey(Post, on_delete=models.CASCADE); created_at = models.DateTimeField(auto_now_add=True)
+    class Meta: unique_together = ("user", "post")
 
 class Profile(models.Model):
-
-    user = models.OneToOneField(
-        User,
-        on_delete=models.CASCADE,
-        related_name="profile"
-    )
-
-    last_seen = models.DateTimeField(default=timezone.now)
-
-
-# -----------------------------
-# Notificações
-# -----------------------------
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile"); last_seen = models.DateTimeField(default=timezone.now)
 
 class Notification(models.Model):
-
-    TYPES = (
-        ("vote", "Vote"),
-        ("comment", "Comment"),
-    )
-
-    recipient = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name="notifications"
-    )
-
-    actor = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE
-    )
-
-    notification_type = models.CharField(
-        max_length=10,
-        choices=TYPES
-    )
-
-    post = models.ForeignKey(
-        Post,
-        on_delete=models.CASCADE
-    )
-
-    is_read = models.BooleanField(default=False)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-
-# -----------------------------
-# Criar Profile automaticamente
-# -----------------------------
+    TYPES = (("vote", "Vote"), ("comment", "Comment"))
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    actor = models.ForeignKey(User, on_delete=models.CASCADE); notification_type = models.CharField(max_length=10, choices=TYPES)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE); is_read = models.BooleanField(default=False); created_at = models.DateTimeField(auto_now_add=True)
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
-    if created:
-        Profile.objects.create(user=instance)
+    if created: Profile.objects.get_or_create(user=instance)
 
-# -----------------------------
-# Analytics de usuário
-# -----------------------------
 class UserEvent(models.Model):
-
-    TYPES = (
-        ("view", "View"),
-        ("click", "Click"),
-        ("upvote", "Upvote"),
-    )
-
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    post = models.ForeignKey(Post, on_delete=models.CASCADE)
-
-    event_type = models.CharField(max_length=10, choices=TYPES)
-
-    created_at = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE); post = models.ForeignKey(Post, on_delete=models.CASCADE); event_type = models.CharField(max_length=20); created_at = models.DateTimeField(auto_now_add=True)
 
 
 # === Fim do arquivo: ./music/models.py ===
@@ -1818,54 +1254,48 @@ def affinity_score(post, user):
 # === Início do arquivo: ./music/recommender.py ===
 
 import numpy as np
-import random
 from django.utils import timezone
 from .models import Post, UserEvent
-from .embeddings import cosine_similarity
 from .rl import get_weights
 
-def average_embedding(embeddings):
-    if not embeddings:
-        return None
-    return np.mean(np.array(embeddings), axis=0)
-
 def get_user_embedding(user):
-    events = UserEvent.objects.filter(user=user)
-    embeddings = [e.post.embedding for e in events if e.post.embedding]
-    return average_embedding(embeddings)
+    try:
+        events = UserEvent.objects.filter(user=user).select_related('post')
+        embeddings = [e.post.embedding for e in events if hasattr(e.post, 'embedding') and e.post.embedding]
+        if not embeddings: return None
+        return np.mean(np.array(embeddings), axis=0)
+    except: return None
 
 def smart_feed(user, limit=10):
-    weights = get_weights()
+    try:
+        weights = get_weights()
+        user_emb = get_user_embedding(user)
+        posts = Post.objects.all()
 
-    user_emb = get_user_embedding(user)
-    posts = Post.objects.all()
+        if user_emb is None:
+            return list(posts.order_by("-score")[:limit])
 
-    if user_emb is None:
-        return posts.order_by("-score")[:limit]
+        results = []
+        for post in posts:
+            emb = getattr(post, 'embedding', None)
+            if not emb: continue
+            
+            # Cálculo de similaridade simples (dot product mock se falhar)
+            try:
+                sim = np.dot(user_emb, emb) / (np.linalg.norm(user_emb) * np.linalg.norm(emb))
+            except: sim = 0.5
 
-    results = []
+            popularity = post.score
+            recency = 1.0 # simplificado
+            
+            final = (sim * weights["similarity"]) + (popularity * weights["popularity"])
+            results.append((final, post))
 
-    for post in posts:
-        if not post.embedding:
-            continue
-
-        sim = cosine_similarity(user_emb, post.embedding)
-        popularity = post.score
-
-        age_days = (timezone.now() - post.created_at).days
-        recency = max(0, 1 - age_days / 30)
-
-        final = (
-            sim * weights["similarity"] +
-            popularity * weights["popularity"] +
-            recency * weights["recency"]
-        )
-
-        results.append((final, post))
-
-    results.sort(key=lambda x: x[0], reverse=True)
-
-    return [p for s, p in results[:limit]]
+        results.sort(key=lambda x: x[0], reverse=True)
+        return [p for s, p in results[:limit]]
+    except Exception as e:
+        print(f"Erro no smart_feed: {e}")
+        return list(Post.objects.all()[:limit])
 
 
 # === Fim do arquivo: ./music/recommender.py ===
@@ -2176,6 +1606,84 @@ from django.test import TestCase
 
 # === Fim do arquivo: ./music/tests.py ===
 
+# === Início do arquivo: ./music/thumbs.py ===
+
+def get_thumbnail(post):
+    # =========================
+    # YOUTUBE
+    # =========================
+    if getattr(post, "youtube_id", None):
+        return f"https://img.youtube.com/vi/{post.youtube_id}/hqdefault.jpg"
+
+    # =========================
+    # SPOTIFY
+    # =========================
+    if hasattr(post, "spotify_image") and post.spotify_image:
+        return post.spotify_image
+
+    # =========================
+    # LAST.FM (se salvo)
+    # =========================
+    if hasattr(post, "lastfm_image") and post.lastfm_image:
+        return post.lastfm_image
+
+    # =========================
+    # JSON SEMÂNTICO
+    # =========================
+    if post.semantic_data and "image" in post.semantic_data:
+        return post.semantic_data["image"]
+
+    # =========================
+    # FALLBACK
+    # =========================
+    return "https://picsum.photos/300/200"
+
+
+# === Fim do arquivo: ./music/thumbs.py ===
+
+# === Início do arquivo: ./music/trends.py ===
+
+from django.utils import timezone
+from datetime import timedelta
+from .models import Post
+from collections import Counter
+from django.db.models import Avg
+
+def get_trends_data(days=7):
+    start_date = timezone.now() - timedelta(days=days)
+    posts = Post.objects.filter(created_at__gte=start_date)
+    
+    all_tags = []
+    for p in posts:
+        tags = p.semantic_data.get('tags', [])
+        all_tags.extend(tags)
+    
+    top_genres = dict(Counter(all_tags).most_common(10))
+    vibe_radar = posts.aggregate(
+        energy=Avg('audio_features__energy'),
+        danceability=Avg('audio_features__danceability'),
+        valence=Avg('audio_features__valence')
+    )
+
+    top_artists = {}
+    for p in posts:
+        if p.artist:
+            name = p.artist.name
+            top_artists[name] = top_artists.get(name, 0) + (1 + p.score)
+    
+    sorted_artists = dict(sorted(top_artists.items(), key=lambda item: item[1], reverse=True)[:5])
+
+    return {
+        "period_name": "Hoje" if days == 1 else "Esta Semana" if days == 7 else "Este Mês",
+        "post_count": posts.count(),
+        "top_genres": top_genres,
+        "vibe_radar": {k: (v or 0) for k, v in vibe_radar.items()},
+        "top_artists": sorted_artists
+    }
+
+
+# === Fim do arquivo: ./music/trends.py ===
+
 # === Início do arquivo: ./music/utils.py ===
 
 from django.utils import timezone
@@ -2230,38 +1738,63 @@ from django.shortcuts import render
 
 # === Início do arquivo: ./music/youtube.py ===
 
-from googleapiclient.discovery import build
 import os
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
-API_KEY = os.getenv("YOUTUBE_API_KEY")
+def get_youtube_client():
+    # Tenta pegar do ambiente
+    api_key = os.getenv("YOUTUBE_API_KEY")
+    
+    if not api_key:
+        print("❌ ERRO: YOUTUBE_API_KEY não encontrada no ambiente (os.getenv)")
+        return None
+        
+    try:
+        return build("youtube", "v3", developerKey=api_key)
+    except Exception as e:
+        print(f"❌ ERRO ao inicializar cliente Google: {e}")
+        return None
 
-youtube = build("youtube", "v3", developerKey=API_KEY)
+def search_youtube(query, limit=5):
+    youtube = get_youtube_client()
+    if not youtube:
+        return []
+    
+    try:
+        req = youtube.search().list(
+            q=query,
+            part="snippet",
+            type="video",
+            maxResults=limit,
+            regionCode="BR"
+        )
+        res = req.execute()
+        
+        results = []
+        for item in res.get("items", []):
+            results.append({
+                "title": item["snippet"]["title"],
+                "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}",
+                "thumbnail": item["snippet"]["thumbnails"]["high"]["url"]
+            })
+        
+        print(f"✅ Busca YT concluída: {len(results)} resultados para '{query}'")
+        return results
 
-def search_youtube(query, limit=10):
-    req = youtube.search().list(
-        q=query,
-        part="snippet",
-        type="video",
-        maxResults=limit
-    )
+    except HttpError as e:
+        print(f"❌ ERRO na API do YouTube: {e.content.decode()}")
+        return []
+    except Exception as e:
+        print(f"❌ ERRO genérico no search_youtube: {e}")
+        return []
 
-    res = req.execute()
-
-    results = []
-
-    for item in res.get("items", []):
-        video_id = item["id"]["videoId"]
-        snippet = item["snippet"]
-
-        results.append({
-            "title": snippet["title"],
-            "embed_url": f"https://www.youtube.com/embed/{video_id}",
-
-            # 🔥 THUMB
-            "thumbnail": snippet["thumbnails"]["high"]["url"]
-        })
-
-    return results
+def ingest_youtube(title, url, user):
+    from .models import Post, Sub
+    sub, _ = Sub.objects.get_or_create(slug="geral", defaults={"name": "Geral", "creator": user})
+    post = Post.objects.create(title=title, url=url, author=user, sub=sub)
+    post.save() 
+    return post
 
 
 # === Fim do arquivo: ./music/youtube.py ===
@@ -2600,6 +2133,306 @@ class Migration(migrations.Migration):
 
 
 # === Fim do arquivo: ./music/migrations/0004_post_audio_features.py ===
+
+# === Início do arquivo: ./music/migrations/0005_remove_post_provider_post_thumbnail.py ===
+
+# Generated by Django 4.2.30 on 2026-04-19 01:21
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('music', '0004_post_audio_features'),
+    ]
+
+    operations = [
+        migrations.RemoveField(
+            model_name='post',
+            name='provider',
+        ),
+        migrations.AddField(
+            model_name='post',
+            name='thumbnail',
+            field=models.URLField(blank=True, null=True),
+        ),
+    ]
+
+
+# === Fim do arquivo: ./music/migrations/0005_remove_post_provider_post_thumbnail.py ===
+
+# === Início do arquivo: ./music/migrations/0006_post_preview_url_post_youtube_id.py ===
+
+# Generated by Django 4.2.30 on 2026-04-19 04:49
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('music', '0005_remove_post_provider_post_thumbnail'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='post',
+            name='preview_url',
+            field=models.URLField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name='post',
+            name='youtube_id',
+            field=models.CharField(blank=True, max_length=50, null=True),
+        ),
+    ]
+
+
+# === Fim do arquivo: ./music/migrations/0006_post_preview_url_post_youtube_id.py ===
+
+# === Início do arquivo: ./music/migrations/0007_remove_post_preview_url_remove_post_youtube_id_and_more.py ===
+
+# Generated by Django 4.2.30 on 2026-04-19 04:54
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('music', '0006_post_preview_url_post_youtube_id'),
+    ]
+
+    operations = [
+        migrations.RemoveField(
+            model_name='post',
+            name='preview_url',
+        ),
+        migrations.RemoveField(
+            model_name='post',
+            name='youtube_id',
+        ),
+        migrations.AlterField(
+            model_name='artist',
+            name='slug',
+            field=models.SlugField(blank=True, unique=True),
+        ),
+    ]
+
+
+# === Fim do arquivo: ./music/migrations/0007_remove_post_preview_url_remove_post_youtube_id_and_more.py ===
+
+# === Início do arquivo: ./music/migrations/0008_alter_artist_slug_alter_genre_slug_alter_sub_name_and_more.py ===
+
+# Generated by Django 4.2.30 on 2026-04-19 04:55
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('music', '0007_remove_post_preview_url_remove_post_youtube_id_and_more'),
+    ]
+
+    operations = [
+        migrations.AlterField(
+            model_name='artist',
+            name='slug',
+            field=models.SlugField(blank=True, max_length=200, unique=True),
+        ),
+        migrations.AlterField(
+            model_name='genre',
+            name='slug',
+            field=models.SlugField(max_length=100, unique=True),
+        ),
+        migrations.AlterField(
+            model_name='sub',
+            name='name',
+            field=models.CharField(max_length=100, unique=True),
+        ),
+        migrations.AlterField(
+            model_name='sub',
+            name='slug',
+            field=models.SlugField(max_length=100, unique=True),
+        ),
+    ]
+
+
+# === Fim do arquivo: ./music/migrations/0008_alter_artist_slug_alter_genre_slug_alter_sub_name_and_more.py ===
+
+# === Início do arquivo: ./music/migrations/0009_comment_score_commentvote.py ===
+
+# Generated by Django 4.2.30 on 2026-04-19 05:12
+
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        ('music', '0008_alter_artist_slug_alter_genre_slug_alter_sub_name_and_more'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='comment',
+            name='score',
+            field=models.IntegerField(default=0),
+        ),
+        migrations.CreateModel(
+            name='CommentVote',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('comment', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='comment_votes', to='music.comment')),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'unique_together': {('user', 'comment')},
+            },
+        ),
+    ]
+
+
+# === Fim do arquivo: ./music/migrations/0009_comment_score_commentvote.py ===
+
+# === Início do arquivo: ./music/migrations/0010_remove_post_content_remove_post_image_and_more.py ===
+
+# Generated by Django 4.2.30 on 2026-04-19 05:34
+
+from django.db import migrations, models
+import django.db.models.deletion
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('music', '0009_comment_score_commentvote'),
+    ]
+
+    operations = [
+        migrations.RemoveField(
+            model_name='post',
+            name='content',
+        ),
+        migrations.RemoveField(
+            model_name='post',
+            name='image',
+        ),
+        migrations.RemoveField(
+            model_name='post',
+            name='search_vector',
+        ),
+        migrations.AddField(
+            model_name='comment',
+            name='parent',
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='replies', to='music.comment'),
+        ),
+        migrations.AlterField(
+            model_name='post',
+            name='artist',
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='music.artist'),
+        ),
+        migrations.AlterField(
+            model_name='post',
+            name='audio_features',
+            field=models.JSONField(blank=True, default=dict),
+        ),
+        migrations.AlterField(
+            model_name='post',
+            name='genre',
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='music.genre'),
+        ),
+        migrations.AlterField(
+            model_name='userevent',
+            name='event_type',
+            field=models.CharField(max_length=20),
+        ),
+    ]
+
+
+# === Fim do arquivo: ./music/migrations/0010_remove_post_content_remove_post_image_and_more.py ===
+
+# === Início do arquivo: ./music/migrations/0011_alter_post_artist_alter_post_genre.py ===
+
+# Generated by Django 4.2.30 on 2026-04-19 05:44
+
+from django.db import migrations, models
+import django.db.models.deletion
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('music', '0010_remove_post_content_remove_post_image_and_more'),
+    ]
+
+    operations = [
+        migrations.AlterField(
+            model_name='post',
+            name='artist',
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='posts', to='music.artist'),
+        ),
+        migrations.AlterField(
+            model_name='post',
+            name='genre',
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='posts', to='music.genre'),
+        ),
+    ]
+
+
+# === Fim do arquivo: ./music/migrations/0011_alter_post_artist_alter_post_genre.py ===
+
+# === Início do arquivo: ./music/migrations/0012_remove_post_embedding.py ===
+
+# Generated by Django 4.2.30 on 2026-04-19 05:55
+
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('music', '0011_alter_post_artist_alter_post_genre'),
+    ]
+
+    operations = [
+        migrations.RemoveField(
+            model_name='post',
+            name='embedding',
+        ),
+    ]
+
+
+# === Fim do arquivo: ./music/migrations/0012_remove_post_embedding.py ===
+
+# === Início do arquivo: ./music/migrations/0013_post_embedding.py ===
+
+# Generated by Django 4.2.30 on 2026-04-19 06:06
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('music', '0012_remove_post_embedding'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='post',
+            name='embedding',
+            field=models.JSONField(blank=True, null=True),
+        ),
+    ]
+
+
+# === Fim do arquivo: ./music/migrations/0013_post_embedding.py ===
 
 # === Início do arquivo: ./music/migrations/__init__.py ===
 

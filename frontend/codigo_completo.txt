@@ -136,38 +136,29 @@ export default {
 
 # === Início do arquivo: ./vite.config.js ===
 
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from "vite"
+import react from "@vitejs/plugin-react"
+import path from "path"
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-
-                            server: {
-                              port: 3001,
-                              host: true,
-
-                              // Permite acesso via ngrok
-                              allowedHosts: [
-                                "labsus.ngrok-free.app",
-                                "musicpage.ngrok-free.app",
-                                "musicabrchat.ngrok-free.app"
-                              ],
-
-                              proxy: {
-                                // API Django
-                                '/api': {
-                                  target: 'http://127.0.0.1:8000',
-                            changeOrigin: true,
-                                },
-
-                            // Arquivos de mídia do Django
-                            '/media': {
-                              target: 'http://127.0.0.1:8000',
-                            changeOrigin: true,
-                            }
-                              }
-                            }
+  plugins: [react()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src")
+    }
+  },
+  server: {
+    host: true,
+    port: 3000,
+    allowedHosts: ["musicabr.ngrok.app"],
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+        secure: false
+      }
+    }
+  }
 })
 
 
@@ -230,621 +221,308 @@ import { useTranslation } from "react-i18next"
 import { useInView } from "react-intersection-observer"
 import axios from "axios"
 
+// Componentes Core
 import MusicCard from "./components/MusicCard"
 import CreatePost from "./components/CreatePost"
 import GenreFilter from "./components/GenreFilter"
 import SkeletonCard from "./components/SkeletonCard"
 import NotificationsDropdown from "./components/NotificationsDropdown"
-import MoodWidget from "./features/musicAI/MoodWidget";
-import AutoPlayerWidget from "./features/musicAI/AutoPlayerWidget";
-import PlaylistWidget from "./features/musicAI/PlaylistWidget";
 
+// Widgets de Inteligência Artificial e Comunidade
+import MoodWidget from "./features/musicAI/MoodWidget"
+import AutoPlayerWidget from "./features/musicAI/AutoPlayerWidget"
+import AIParameters from "./components/AIParameters"
+import LivePulse from "./components/LivePulse"
+import LeaderboardWidget from "./components/LeaderboardWidget"
+import YoutubeIngest from "./components/YoutubeIngest"
+import GraphExplorer from "./components/GraphExplorer"
+import DiscoveryTicker from "./components/DiscoveryTicker"
 
+// Ícones
 import {
-  Music,
-  Bell,
-  Search,
-  LogOut,
-  Compass,
-  Zap,
-  X,
-  Loader2,
-  Hash,
-  Plus,
-  Send
+  Music, Bell, LogOut, Compass, Zap, X, Loader2, Hash, Plus, Search, Sparkles, Award, BarChart3, Sun, Moon
 } from "lucide-react"
 
 axios.defaults.baseURL = "/api"
 axios.defaults.withCredentials = true
 
 function App() {
-
   const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { subSlug } = useParams()
   const { ref, inView } = useInView()
 
+  // Estados de Interface
   const [authMode, setAuthMode] = useState(null)
   const [showCreateSub, setShowCreateSub] = useState(false)
   const [showNotifs, setShowNotifs] = useState(false)
   const [user, setUser] = useState(null)
-  const [sort, setSort] = useState("latest")
-  const [search, setSearch] = useState("")
-  const [subSearch, setSubSearch] = useState("")
-  const [activeGenre, setActiveGenre] = useState(null)
-
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark")
 
+  // Estados de Filtro e Busca
+  const [sort, setSort] = useState("latest")
+  const [search, setSearch] = useState("")
+  const [activeGenre, setActiveGenre] = useState(null)
+
+  // Controle de Tema (Dark/Light)
   useEffect(() => {
-
-    document.documentElement.classList.remove("dark","light")
+    document.documentElement.classList.remove("dark", "light")
     document.documentElement.classList.add(theme)
-
     localStorage.setItem("theme", theme)
-
   }, [theme])
 
+  // Checar sessão do usuário ao carregar
   useEffect(() => {
-
     axios.get("/me")
-    .then(res => setUser(res.data))
-    .catch(() => setUser(null))
-
+      .then(res => setUser(res.data))
+      .catch(() => setUser(null))
   }, [])
 
   const handleLogout = async () => {
-
     await axios.post("/logout")
     setUser(null)
     queryClient.invalidateQueries()
-
   }
 
   const handleAuth = async (e) => {
-
     e.preventDefault()
-
     const endpoint = authMode === "login" ? "/login" : "/register"
-
     const payload = {
-
       username: e.target.username.value,
       password: e.target.password.value,
       ...(authMode === "signup" && { email: e.target.email.value })
-
     }
-
     try {
-
       const res = await axios.post(endpoint, payload)
       setUser(res.data)
       setAuthMode(null)
       queryClient.invalidateQueries()
-
+    } catch (err) {
+      alert(err.response?.data?.detail || "Erro na autenticação")
     }
-
-    catch(err){
-
-      alert(err.response?.data?.detail)
-
-    }
-
   }
 
+  // Notificações
   const { data: notificationsData = [] } = useQuery({
-
-    queryKey:["notifications"],
-    queryFn:()=>axios.get("/notifications").then(res=>res.data),
-                                                    enabled:!!user,
-                                                    refetchInterval:15000
-
+    queryKey: ["notifications"],
+    queryFn: () => axios.get("/notifications").then(res => res.data),
+    enabled: !!user,
+    refetchInterval: 15000
   })
 
-  const notifications = Array.isArray(notificationsData) ? notificationsData : []
-  const unreadCount = notifications.filter(n=>!n.is_read).length
+  const unreadCount = Array.isArray(notificationsData) ? notificationsData.filter(n => !n.is_read).length : 0
 
-  const { data: stats } = useQuery({
-
-    queryKey:["stats"],
-    queryFn:()=>axios.get("/stats").then(res=>res.data),
-                                   refetchInterval:30000
-
+  // Comunidades (Subs)
+  const { data: allSubs = [] } = useQuery({
+    queryKey: ["subs"],
+    queryFn: () => axios.get("/subs").then(res => res.data)
   })
 
-  const { data: allSubsData = [] } = useQuery({
-
-    queryKey:["subs"],
-    queryFn:()=>axios.get("/subs").then(res=>res.data)
-
-  })
-
-  const allSubs = Array.isArray(allSubsData) ? allSubsData : []
-
-  const filteredSubs = allSubs.filter(sub =>
-  sub.slug.toLowerCase().includes(subSearch.toLowerCase())
-  )
-
-  const { data: subData } = useQuery({
-
-    queryKey:["sub", subSlug],
-    queryFn:()=>axios.get(`/subs/${subSlug}`).then(res=>res.data),
-                                     enabled:!!subSlug
-
-  })
-
+  // --- LÓGICA DE FEED INTELIGENTE (IA & RL) ---
   const {
-
     data: postsData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
     isLoading
-
   } = useInfiniteQuery({
-
-    queryKey:["posts", sort, search, activeGenre, subSlug],
-
-    queryFn:({pageParam=0})=>
-
-    axios.get("/posts",{
-
-      params:{
-
-        sort,
-        search,
-        genre:activeGenre,
-        sub_slug:subSlug,
-        limit:10,
-        offset:pageParam
-
-      }
-
-    }).then(res=>res.data),
-
-                       getNextPageParam:(lastPage)=>lastPage?.length===10 ? true : undefined,
-                       initialPageParam:0
-
+    queryKey: ["posts", sort, search, activeGenre, subSlug],
+    queryFn: async ({ pageParam = 0 }) => {
+      let endpoint = "/posts";
+      // Seleciona endpoint de IA se o modo for 'smart' ou 'rl'
+      if (sort === "smart") endpoint = "/feed/rl";
+      
+      const res = await axios.get(endpoint, {
+        params: { sort, search, genre: activeGenre, sub_slug: subSlug, limit: 10, offset: pageParam }
+      });
+      // Aceita tanto lista direta quanto {results: []} do backend
+      return Array.isArray(res.data) ? res.data : (res.data.results || []);
+    },
+    getNextPageParam: (lastPage) => (lastPage && lastPage.length === 10) ? true : undefined,
+    initialPageParam: 0
   })
 
-  useEffect(()=>{
+  useEffect(() => {
+    if (inView && hasNextPage) fetchNextPage()
+  }, [inView, hasNextPage])
 
-    if(inView && hasNextPage) fetchNextPage()
-
-  },[inView,hasNextPage])
-
-  const allPosts = useMemo(()=>postsData?.pages?.flat() || [],[postsData])
-
-  const createSubMutation = useMutation({
-
-    mutationFn:(newSub)=>axios.post("/subs",newSub),
-
-                                        onSuccess:(res)=>{
-
-                                          queryClient.invalidateQueries(["subs"])
-                                          setShowCreateSub(false)
-                                          navigate(`/s/${res.data.slug}`)
-
-                                        }
-
-  })
-
-  const joinMutation = useMutation({
-
-    mutationFn:()=>axios.post(`/subs/${subSlug}/join`),
-                                   onSuccess:()=>queryClient.invalidateQueries(["sub",subSlug])
-
-  })
+  const allPosts = useMemo(() => postsData?.pages?.flat() || [], [postsData])
 
   return (
+    <div className="min-h-screen bg-musica text-black dark:text-white font-sans transition-colors duration-300">
+      
+      {/* NAVBAR */}
+      <nav className="border-b border-black/10 dark:border-white/5 bg-white/80 dark:bg-black/40 backdrop-blur-xl sticky top-0 z-[100]">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
+          <Link to="/" className="flex items-center gap-3 shrink-0">
+            <div className="w-10 h-10 bg-green-600 rounded-2xl rotate-12 flex items-center justify-center shadow-lg shadow-green-600/30">
+              <Music className="text-white -rotate-12"/>
+            </div>
+            <h1 className="text-xl font-black italic tracking-tighter">MusicaBR</h1>
+          </Link>
 
-    <div className="min-h-screen bg-musica text-black dark:text-white font-sans">
+          {/* BARRA DE BUSCA GLOBAL */}
+          <div className="hidden md:flex flex-1 max-w-md relative">
+            <input 
+              type="text" 
+              placeholder="Buscar música, artistas ou vibes..." 
+              className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl px-4 py-2 text-sm outline-none focus:border-green-600 transition-all"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <Search className="absolute right-3 top-2.5 text-slate-500" size={16} />
+          </div>
 
-    {/* NAVBAR */}
+          {/* AÇÕES DA NAV */}
+          <div className="flex gap-4 items-center shrink-0">
+            <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="w-9 h-9 rounded-full bg-green-600/10 text-green-600 flex items-center justify-center hover:bg-green-600 hover:text-white transition">
+              {theme === "dark" ? <Sun size={18}/> : <Moon size={18}/>}
+            </button>
+            {user ? (
+              <div className="flex items-center gap-4">
+                <button onClick={() => setShowNotifs(!showNotifs)} className="relative p-2 text-slate-500 hover:text-green-600">
+                  <Bell size={20}/>
+                  {unreadCount > 0 && <span className="absolute top-1 right-1 text-[9px] bg-red-500 text-white w-4 h-4 flex items-center justify-center rounded-full animate-bounce">{unreadCount}</span>}
+                </button>
+                {showNotifs && <NotificationsDropdown notifications={notificationsData}/>}
+                <button onClick={handleLogout} className="p-2 text-slate-500 hover:text-red-500 transition"><LogOut size={20}/></button>
+              </div>
+            ) : (
+              <button onClick={() => setAuthMode("login")} className="bg-green-600 px-6 py-2 rounded-xl text-white text-xs font-black uppercase tracking-widest hover:bg-green-500 transition shadow-lg shadow-green-600/20">
+                Login
+              </button>
+            )}
+          </div>
+        </div>
+      </nav>
 
-    <nav className="border-b border-black/10 dark:border-white/5 bg-white/80 dark:bg-black/40 backdrop-blur-xl sticky top-0 z-[100]">
+      {/* TICKER DE DESCOBERTAS */}
+      <DiscoveryTicker />
 
-    <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-12">
+        
+        {/* SIDEBAR ESQUERDA */}
+        <aside className="hidden lg:block space-y-8">
+          <LivePulse />
+          
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Comunidades</h3>
+              <button onClick={() => setShowCreateSub(true)} className="text-green-600 hover:bg-green-600/10 p-1 rounded transition"><Plus size={16}/></button>
+            </div>
+            <nav className="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar pr-2">
+              <Link to="/" className="flex items-center gap-2 text-sm p-2 rounded-lg hover:bg-green-600/10 transition"><Compass size={16}/> Feed Geral</Link>
+              {allSubs.map(sub => (
+                <Link key={sub.slug} to={`/s/${sub.slug}`} className="flex items-center gap-2 text-sm p-2 rounded-lg hover:bg-green-600/10 transition text-slate-400 hover:text-green-600"><Hash size={16}/> s/{sub.slug}</Link>
+              ))}
+            </nav>
+          </div>
 
-    <Link to="/" className="flex items-center gap-3">
+          <div className="space-y-6">
+            <AIParameters />
+            
+            <div className="bg-white/50 dark:bg-[#0f1115] p-5 rounded-3xl border border-black/5 dark:border-white/10 shadow-sm ai-glow">
+              <h4 className="text-[10px] font-black mb-4 text-green-500 uppercase tracking-widest flex items-center gap-2"><Sparkles size={12}/> Mood AI Search</h4>
+              <MoodWidget />
+            </div>
 
-    <div className="w-10 h-10 bg-green-600 rounded-2xl rotate-12 flex items-center justify-center">
+            <YoutubeIngest />
+            <GraphExplorer />
 
-    <Music className="text-white -rotate-12"/>
+            <div className="bg-white/50 dark:bg-[#0f1115] p-5 rounded-3xl border border-black/5 dark:border-white/10 shadow-sm">
+              <h4 className="text-[10px] font-black mb-4 text-green-500 uppercase tracking-widest flex items-center gap-2"><Award size={12}/> Top Scouts</h4>
+              <LeaderboardWidget />
+            </div>
 
-    </div>
+            <Link to="/analytics" className="flex items-center justify-center gap-2 p-4 bg-green-600/10 border border-green-600/20 rounded-2xl text-[10px] font-black uppercase text-green-600 hover:bg-green-600 hover:text-white transition">
+              <BarChart3 size={14}/> Live Analytics
+            </Link>
+          </div>
+        </aside>
 
-    <h1 className="text-xl font-black italic">MusicaBR</h1>
+        {/* FEED PRINCIPAL */}
+        <main className="min-w-0">
+          {user && <div className="mb-10"><CreatePost /></div>}
+          
+          <div className="flex gap-2 mb-8 flex-wrap">
+            {["latest", "top", "smart"].map((m) => (
+              <button 
+                key={m} 
+                onClick={() => setSort(m)} 
+                className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${sort === m ? "bg-green-600 text-white shadow-xl shadow-green-600/30" : "bg-black/5 dark:bg-white/5 text-slate-500 hover:bg-black/10 dark:hover:bg-white/10"}`}
+              >
+                {m === "smart" ? "✨ IA Feed" : m}
+              </button>
+            ))}
+          </div>
 
-    </Link>
+          <GenreFilter activeGenre={activeGenre} onSelect={setActiveGenre}/>
 
-    <div className="flex gap-4 items-center">
+          <div className="flex flex-col gap-8">
+            {isLoading ? (
+              [1, 2, 3].map(i => <SkeletonCard key={i}/>)
+            ) : (
+              <>
+                {allPosts.map(post => (
+                  <MusicCard key={post.id} post={post} user={user}/>
+                ))}
+                
+                <div ref={ref} className="py-20 flex justify-center">
+                  {isFetchingNextPage ? (
+                    <div className="flex flex-col items-center gap-2 text-green-600">
+                      <Loader2 className="animate-spin" size={32}/>
+                      <span className="text-[8px] font-black uppercase tracking-widest">Sincronizando Vibes...</span>
+                    </div>
+                  ) : (
+                    <Zap className="opacity-10 text-green-500" size={40}/>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </main>
+      </div>
 
-    <button
-
-    onClick={()=>i18n.changeLanguage(i18n.language.startsWith("pt") ? "en" : "pt")}
-
-    className="text-xs font-bold"
-
-    >
-
-    {i18n.language}
-
-    </button>
-
-    <button
-
-    onClick={()=>setTheme(theme==="dark" ? "light" : "dark")}
-
-    className="w-9 h-9 rounded-full bg-green-600 text-white flex items-center justify-center"
-
-    >
-
-    {theme==="dark" ? "☀️":"🌙"}
-
-    </button>
-
-    {user ? (
-
-      <>
-
-      <button
-
-      onClick={()=>setShowNotifs(!showNotifs)}
-
-      className="relative"
-
-      >
-
-      <Bell/>
-
-      {unreadCount>0 && (
-
-        <span className="absolute -top-1 -right-1 text-[9px] bg-red-500 text-white w-4 h-4 flex items-center justify-center rounded-full">
-
-        {unreadCount}
-
-        </span>
-
+      {/* MODAL DE AUTENTICAÇÃO */}
+      {authMode && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+          <div className="bg-white dark:bg-[#0f1115] p-8 rounded-[40px] w-full max-w-sm relative shadow-2xl border border-white/10">
+            <button onClick={() => setAuthMode(null)} className="absolute top-6 right-6 text-slate-500 hover:text-white"><X size={20}/></button>
+            <h2 className="text-2xl font-black mb-6 text-center tracking-tighter italic">MusicaBR</h2>
+            <form onSubmit={handleAuth} className="flex flex-col gap-4">
+              <input name="username" placeholder="Seu usuário" required className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-green-600 outline-none transition"/>
+              {authMode === "signup" && <input name="email" type="email" placeholder="E-mail" required className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-green-600 outline-none transition"/>}
+              <input name="password" type="password" placeholder="Sua senha" required className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-green-600 outline-none transition"/>
+              <button type="submit" className="bg-green-600 text-white p-4 rounded-2xl font-black uppercase tracking-widest mt-2 hover:bg-green-500 transition">
+                {authMode === "login" ? "Entrar" : "Criar conta"}
+              </button>
+              <button type="button" onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")} className="text-xs font-bold text-green-600 hover:underline">
+                {authMode === "login" ? "Criar conta" : "Já tem conta? Login"}
+              </button>
+            </form>
+          </div>
+        </div>
       )}
 
-      </button>
-
-      {showNotifs && <NotificationsDropdown notifications={notifications}/>}
-
-      <button onClick={handleLogout}><LogOut/></button>
-
-      </>
-
-    ):(
-
-      <button
-
-      onClick={()=>setAuthMode("login")}
-
-      className="bg-green-600 px-4 py-2 rounded-xl text-white text-xs font-bold"
-
-      >
-
-      Login
-
-      </button>
-
-    )}
-
-    </div>
-
-    </div>
-
-    </nav>
-
-    {/* CONTEÚDO */}
-
-    <div className="max-w-7xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-12">
-
-    {/* SIDEBAR */}
-
-    <aside className="hidden lg:block">
-
-    <div className="flex items-center justify-between mb-4">
-
-    <h3 className="text-xs font-black text-slate-500">
-    {t("communities")}
-    </h3>
-
-    <button
-    onClick={()=>setShowCreateSub(true)}
-    className="text-green-600 hover:bg-green-600/10 p-1 rounded"
-    >
-    <Plus size={16}/>
-    </button>
-
-    </div>
-
-    <input
-    type="text"
-    placeholder="Buscar comunidade"
-    value={subSearch}
-    onChange={(e)=>setSubSearch(e.target.value)}
-    className="w-full mb-4 px-3 py-2 rounded-xl bg-white/70 dark:bg-[#0f1115] border border-white/10 text-sm"
-    />
-
-    <nav className="flex flex-col gap-2">
-
-    <Link to="/" className="flex items-center gap-2 text-sm">
-    <Compass size={16}/> Feed
-    </Link>
-
-    {filteredSubs.map(sub => (
-
-      <Link
-      key={sub.slug}
-      to={`/s/${sub.slug}`}
-      className="flex items-center gap-2 text-sm hover:text-green-600"
-      >
-
-      <Hash size={16}/> s/{sub.slug}
-
-      </Link>
-
-    ))}
-
-    </nav>
-
-<div className="mt-10 space-y-6">
-
-  <div className="bg-white/80 dark:bg-[#0f1115] p-4 rounded-2xl border border-white/10">
-    <h4 className="text-xs font-black mb-2 text-green-500">Mood AI</h4>
-    <MoodWidget />
-  </div>
-
-  <div className="bg-white/80 dark:bg-[#0f1115] p-4 rounded-2xl border border-white/10">
-    <h4 className="text-xs font-black mb-2 text-green-500">Autoplay</h4>
-    <AutoPlayerWidget />
-  </div>
-
-  <div className="bg-white/80 dark:bg-[#0f1115] p-4 rounded-2xl border border-white/10">
-    <h4 className="text-xs font-black mb-2 text-green-500">Playlist IA</h4>
-    <PlaylistWidget />
-  </div>
-
-</div>
-    </aside>
-
-
-
-    {/* FEED */}
-
-    <main>
-    {/* CRIAR POST */}
-
-    {user && (
-
-      <div className="mb-8">
-
-      <CreatePost />
-
-      </div>
-
-    )}
-    <div className="flex gap-3 mb-6 flex-wrap">
-
-    <button
-
-    onClick={()=>setSort("latest")}
-
-    className={`px-4 py-2 rounded-xl text-xs font-black ${sort==="latest"?"bg-green-600 text-white":"bg-white/5"}`}
-
-    >
-
-    New
-
-    </button>
-
-    <button
-
-    onClick={()=>setSort("top")}
-
-    className={`px-4 py-2 rounded-xl text-xs font-black ${sort==="top"?"bg-green-600 text-white":"bg-white/5"}`}
-
-    >
-
-    Top
-
-    </button>
-
-    <button
-
-    onClick={()=>setSort("trending")}
-
-    className={`px-4 py-2 rounded-xl text-xs font-black ${sort==="trending"?"bg-green-600 text-white":"bg-white/5"}`}
-
-    >
-
-    Trending
-
-    </button>
-
-    </div>
-
-    <GenreFilter activeGenre={activeGenre} onSelect={setActiveGenre}/>
-
-    <div className="flex flex-col gap-6 min-w-0 w-full">
-
-    {isLoading ? (
-
-      [1,2,3].map(i=><SkeletonCard key={i}/>)
-
-    ):(
-
-    <>
-
-    {allPosts.map(post=>(
-
-      <MusicCard key={post.id} post={post} user={user}/>
-
-    ))}
-
-    <div ref={ref} className="py-20 flex justify-center">
-
-    {isFetchingNextPage ?
-
-      <Loader2 className="animate-spin text-green-500"/>
-
-      :
-
-      <Zap className="opacity-20"/>
-
-    }
-
-    </div>
-
-    </>
-
-    )}
-
-    </div>
-
-    </main>
-
-    </div>
-
-    {/* MODAL CRIAR COMUNIDADE */}
-
-    {showCreateSub && (
-
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-
-      <div className="bg-white dark:bg-[#0f1115] p-8 rounded-2xl w-full max-w-sm">
-
-      <h2 className="text-xl font-black mb-6">
-      Criar comunidade
-      </h2>
-
-      <form
-      onSubmit={(e)=>{
-        e.preventDefault()
-        createSubMutation.mutate({
-          name:e.target.name.value,
-          description:e.target.description.value
-        })
-      }}
-      className="flex flex-col gap-4"
-      >
-
-      <input
-      name="name"
-      placeholder="Nome da comunidade"
-      required
-      className="p-3 rounded-xl border border-black/10 dark:border-white/10 bg-transparent"
-      />
-
-      <textarea
-      name="description"
-      placeholder="Descrição"
-      className="p-3 rounded-xl border border-black/10 dark:border-white/10 bg-transparent"
-      />
-
-      <button
-      type="submit"
-      className="bg-green-600 text-white p-3 rounded-xl font-bold"
-      >
-      Criar
-      </button>
-
-      <button
-      type="button"
-      onClick={()=>setShowCreateSub(false)}
-      className="text-sm text-slate-500"
-      >
-      Cancelar
-      </button>
-
-      </form>
-
-      </div>
-
-      </div>
-
-    )}
-
-    {/* MODAL LOGIN */}
-
-    {authMode && (
-
-      <div className="fixed inset-0 bg-black/80 backdrop-blur flex items-center justify-center z-50">
-
-      <div className="bg-white dark:bg-[#0f1115] p-8 rounded-2xl w-full max-w-sm relative">
-
-      <button
-      onClick={()=>setAuthMode(null)}
-      className="absolute top-3 right-3"
-      >
-      <X size={18}/>
-      </button>
-
-      <h2 className="text-xl font-black mb-6 text-center">
-
-      {authMode==="login" ? "Login" : "Criar conta"}
-
-      </h2>
-
-      <form onSubmit={handleAuth} className="flex flex-col gap-4">
-
-      <input
-      name="username"
-      placeholder="username"
-      required
-      className="p-3 rounded-xl border border-black/10 dark:border-white/10 bg-transparent"
-      />
-
-      {authMode==="signup" && (
-
-        <input
-        name="email"
-        type="email"
-        placeholder="email"
-        required
-        className="p-3 rounded-xl border border-black/10 dark:border-white/10 bg-transparent"
-        />
-
+      {/* MODAL CRIAR SUB */}
+      {showCreateSub && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+          <div className="bg-white dark:bg-[#0f1115] p-8 rounded-[40px] w-full max-w-md shadow-2xl border border-white/10">
+            <h2 className="text-2xl font-black mb-6 tracking-tighter italic">Fundar s/comunidade</h2>
+            <form onSubmit={(e) => { e.preventDefault(); setShowCreateSub(false); }} className="flex flex-col gap-4">
+              <input name="name" placeholder="Nome (ex: idm-classics)" required className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-green-600 outline-none transition"/>
+              <textarea name="description" placeholder="Sobre o que é?" className="p-4 rounded-2xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-green-600 outline-none transition h-32"/>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setShowCreateSub(false)} className="flex-1 p-4 rounded-2xl font-bold bg-black/5 dark:bg-white/5 text-slate-500">Cancelar</button>
+                <button type="submit" className="flex-1 bg-green-600 text-white p-4 rounded-2xl font-black uppercase tracking-widest">Fundar</button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
-
-      <input
-      name="password"
-      type="password"
-      placeholder="password"
-      required
-      className="p-3 rounded-xl border border-black/10 dark:border-white/10 bg-transparent"
-      />
-
-      <button
-      type="submit"
-      className="bg-green-600 text-white p-3 rounded-xl font-bold"
-      >
-      {authMode==="login" ? "Login" : "Criar conta"}
-      </button>
-
-      <button
-      type="button"
-      onClick={()=>setAuthMode(authMode==="login"?"signup":"login")}
-      className="text-xs text-green-600"
-      >
-      {authMode==="login" ? "Criar conta" : "Já tenho conta"}
-      </button>
-
-      </form>
-
-      </div>
-
-      </div>
-
-    )}
-
     </div>
-
   )
-
 }
 
 export default App
@@ -1185,72 +863,59 @@ export default i18n;
 
 @import "tailwindcss";
 
-/* O resto do seu CSS customizado abaixo */
 body {
   background-color: #050608;
   color: white;
   margin: 0;
-  font-family: sans-serif;
+  font-family: 'Inter', sans-serif;
 }
-
-@utility no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-  &::-webkit-scrollbar {
-    display: none;
-  }
-}
-
-/* ================================
- *  Background MusicaBR 🇧🇷
- = *=============================== */
-
-.bg-brasil {
-
-  background: linear-gradient(
-    120deg,
-    #009c3b,
-    #00b347,
-    #ffdf00,
-    #009c3b
-  );
-
-  background-size: 300% 300%;
-
-  animation: brasilGradient 18s ease infinite;
-
-}
-
-/* =========================
- *  Background MusicaBR
- = *======================== */
 
 .bg-musica {
-
-  background:
-  radial-gradient(circle at 20% 20%, rgba(0,156,59,0.15), transparent 40%),
-  radial-gradient(circle at 80% 80%, rgba(255,223,0,0.08), transparent 40%),
-  #050608;
-
+  background: 
+    radial-gradient(circle at 0% 0%, rgba(0, 156, 59, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(255, 223, 0, 0.03) 0%, transparent 50%),
+    #050608;
 }
 
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1a1a1a; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #009c3b; }
 
-/* animação */
+/* AI Glow Effect */
+.ai-glow {
+  box-shadow: 0 0 20px rgba(0, 156, 59, 0.2);
+  border: 1px solid rgba(0, 156, 59, 0.3) !important;
+}
 
-@keyframes brasilGradient {
+/* Glassmorphism para os cards do Feed */
+.glass-card {
+  background: rgba(15, 17, 21, 0.8) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
 
-  0% {
-    background-position: 0% 50%;
-  }
-
-  50% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0% 50%;
-  }
-
+/* Animação suave para os badges de IA */
+@keyframes sparkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.2); }
+}
+.animate-sparkle {
+  animation: sparkle 2s ease-in-out infinite;
+}
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee 40s linear infinite;
+}
+.animate-marquee:hover {
+  animation-play-state: paused;
 }
 
 
@@ -1259,37 +924,38 @@ body {
 # === Início do arquivo: ./src/main.jsx ===
 
 import React from 'react'
-import { createRoot } from 'react-dom/client' // Importação correta para React 18
+import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import App from './App.jsx'
-import ProfilePage from './pages/ProfilePage.jsx' // Certifique-se de criar este arquivo
-import './index.css'
-import './i18n' // Importa a configuração de idiomas
-import ArtistPage from "./pages/ArtistPage"
 
-// 1. Instância do cliente de cache (React Query)
+import App from './App.jsx'
+import ProfilePage from './pages/ProfilePage.jsx'
+import ArtistPage from './pages/ArtistPage.jsx'
+import AnalyticsPage from './pages/AnalyticsPage.jsx'
+import PostPage from './pages/PostPage.jsx'
+
+import './index.css'
+import './i18n'
+
 const queryClient = new QueryClient()
 
-// 2. Seleciona o elemento root do HTML
 const container = document.getElementById('root')
 const root = createRoot(container)
 
-// 3. Renderiza o App com Rotas e Query Client
 root.render(
   <React.StrictMode>
-  <QueryClientProvider client={queryClient}>
-  <BrowserRouter>
-  <Routes>
-  {/* Rota principal: Feed da Music Page */}
-  <Route path="/" element={<App />} />
-  <Route path="/s/:subSlug" element={<App />} />
-  {/* Rota de Perfil: u/username */}
-  <Route path="/profile/:username" element={<ProfilePage />} />
-  <Route path="/artist/:slug" element={<ArtistPage />} />
-  </Routes>
-  </BrowserRouter>
-  </QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<App />} />
+          <Route path="/s/:subSlug" element={<App />} />
+          <Route path="/profile/:username" element={<ProfilePage />} />
+          <Route path="/artist/:slug" element={<ArtistPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/post/:id" element={<PostPage />} />
+        </Routes>
+      </BrowserRouter>
+    </QueryClientProvider>
   </React.StrictMode>
 )
 
@@ -1316,6 +982,61 @@ export function useApi(fn) {
 
 
 # === Fim do arquivo: ./src/hooks/useApi.js ===
+
+# === Início do arquivo: ./src/components/AIParameters.jsx ===
+
+import { useQuery } from "@tanstack/react-query";
+import api from "@/lib/api";
+import { Brain, Info } from "lucide-react";
+
+export default function AIParameters() {
+  const { data: rlData } = useQuery({
+    queryKey: ["rl-weights"],
+    queryFn: () => api.get("/feed/rl").then(res => res.data),
+    refetchInterval: 10000
+  });
+
+  // Nota: O backend pode retornar a variante e os pesos se configurado.
+  // Vamos usar pesos padrão se o backend ainda não expuser o dicionário completo.
+  const weights = {
+    similarity: 0.6,
+    popularity: 0.2,
+    recency: 0.2
+  };
+
+  return (
+    <div className="bg-green-600/5 border border-green-600/20 p-5 rounded-[32px]">
+      <div className="flex items-center justify-between mb-6">
+        <h4 className="text-[10px] font-black uppercase text-green-500 flex items-center gap-2">
+          <Brain size={14} /> Foco do Algoritmo
+        </h4>
+        <span className="text-[9px] font-black bg-green-500 text-black px-2 py-0.5 rounded-full">
+          VARIANTE {rlData?.variant || "A"}
+        </span>
+      </div>
+
+      <div className="space-y-4">
+        {Object.entries(weights).map(([key, val]) => (
+          <div key={key}>
+            <div className="flex justify-between text-[8px] uppercase font-black text-slate-500 mb-1">
+              <span>{key}</span>
+              <span>{(val * 100).toFixed(0)}%</span>
+            </div>
+            <div className="h-1 bg-black/20 rounded-full overflow-hidden">
+              <div className="h-full bg-green-500 transition-all duration-1000" style={{ width: `${val * 100}%` }}></div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 text-[7px] text-slate-500 leading-tight">
+        *Este gráfico mostra como a IA prioriza músicas para você agora. O peso muda conforme você vota.
+      </p>
+    </div>
+  );
+}
+
+
+# === Fim do arquivo: ./src/components/AIParameters.jsx ===
 
 # === Início do arquivo: ./src/components/AutoPlayer.jsx ===
 
@@ -1399,83 +1120,112 @@ export default function BottomNav({ unreadCount, setAuthMode, user }) {
 
 # === Fim do arquivo: ./src/components/BottomNav.jsx ===
 
+# === Início do arquivo: ./src/components/CommentNode.jsx ===
+
+import { useState } from 'react';
+import { ArrowBigUp } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
+
+export default function CommentNode({ comment, allComments, postId, user }) {
+  const [isReplying, setIsReplying] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const queryClient = useQueryClient();
+
+  const replies = allComments.filter(c => c.parent_id === comment.id);
+
+  const voteMutation = useMutation({
+    mutationFn: () => axios.post(`/comments/${comment.id}/vote`),
+    onSuccess: () => queryClient.invalidateQueries(['comments', postId])
+  });
+
+  return (
+    <div className="flex gap-3 mt-5 border-l border-white/5 pl-4 ml-1">
+      <div className="flex flex-col items-center gap-1">
+        <button 
+          onClick={() => voteMutation.mutate()}
+          className={`p-1 rounded transition-colors ${comment.voted ? 'text-green-500 bg-green-500/10' : 'text-slate-600 hover:bg-white/5'}`}
+        >
+          <ArrowBigUp size={20} fill={comment.voted ? "currentColor" : "none"} />
+        </button>
+        
+        {/* CONTADOR DE UPVOTES DO COMENTÁRIO */}
+        <span className={`text-[10px] font-black ${comment.voted ? 'text-green-500' : 'text-slate-600'}`}>
+          {comment.score || 0}
+        </span>
+      </div>
+
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[10px] font-black text-green-500 uppercase italic">u/{comment.author_username}</span>
+          <span className="text-[8px] font-bold text-slate-600">{comment.created_at}</span>
+        </div>
+        <p className="text-sm text-slate-300 mb-2">{comment.text}</p>
+        
+        <div className="flex gap-4">
+          <button onClick={() => setIsReplying(!isReplying)} className="text-[9px] font-black uppercase text-slate-500 hover:text-white">Responder</button>
+        </div>
+
+        {replies.map(r => (
+          <CommentNode key={r.id} comment={r} allComments={allComments} postId={postId} user={user} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+# === Fim do arquivo: ./src/components/CommentNode.jsx ===
+
 # === Início do arquivo: ./src/components/Comments.jsx ===
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { Send, User as UserIcon } from 'lucide-react';
+import { Send } from 'lucide-react';
+import CommentNode from './CommentNode';
 
 export default function Comments({ postId, user }) {
   const [text, setText] = useState('');
   const queryClient = useQueryClient();
 
-  // Busca os comentários do post
-  const { data: comments, isLoading } = useQuery({
+  const { data: comments = [], isLoading } = useQuery({
     queryKey: ['comments', postId],
-    queryFn: () => axios.get(`http://localhost:8000/api/posts/${postId}/comments`).then(res => res.data),
+    queryFn: () => axios.get(`/posts/${postId}/comments`).then(res => res.data),
   });
 
-  // Mutação para criar comentário
-  const mutation = useMutation({
-    mutationFn: (newComment) => axios.post(`http://localhost:8000/api/posts/${postId}/comments`, newComment),
+  const commentMutation = useMutation({
+    mutationFn: (payload) => axios.post(`/posts/${postId}/comments`, payload),
     onSuccess: () => {
       queryClient.invalidateQueries(['comments', postId]);
       setText('');
-    }
+    },
+    onError: (err) => alert(err.response?.data?.detail || "Erro ao comentar")
   });
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!text.trim()) return;
-    mutation.mutate({ text });
-  };
+  const rootComments = comments.filter(c => !c.parent_id);
 
   return (
-    <div className="mt-4 pt-4 border-t border-white/5 space-y-6 animate-in fade-in slide-in-from-top-2">
-      
-      {/* Formulário (só se logado) */}
-      {user ? (
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <input 
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Escreva sua opinião..."
-            className="flex-1 bg-black border border-white/10 p-2 px-4 rounded-xl text-xs outline-none focus:border-green-500 transition-all"
-          />
-          <button 
-            disabled={mutation.isPending}
-            className="bg-green-600 p-2 px-4 rounded-xl hover:bg-green-500 transition-all disabled:opacity-50"
-          >
-            <Send size={14} />
-          </button>
-        </form>
-      ) : (
-        <p className="text-[10px] text-slate-500 font-bold uppercase text-center py-2">Faça login para comentar</p>
-      )}
+    <div className="space-y-8">
+      <div className="relative">
+        <textarea 
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={user ? "O que você achou dessa track?" : "Faça login para comentar"}
+          className="w-full bg-white/5 border border-white/10 p-5 rounded-[24px] text-sm outline-none focus:border-green-500 h-24 resize-none"
+        />
+        <button 
+          onClick={() => text.trim() && commentMutation.mutate({ text, parent_id: null })}
+          className="absolute right-4 bottom-4 bg-green-600 p-3 rounded-2xl text-white hover:bg-green-500 transition-all"
+        >
+          <Send size={18} />
+        </button>
+      </div>
 
-      {/* Lista de Comentários */}
-      <div className="space-y-4 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-        {isLoading ? (
-          <div className="text-center py-4 animate-pulse text-slate-600 text-[10px] font-bold uppercase">Carregando...</div>
-        ) : comments?.length > 0 ? (
-          comments.map(c => (
-            <div key={c.id} className="flex gap-3 items-start group">
-              <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0 border border-white/5">
-                <UserIcon size={14} className="text-slate-500" />
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-black text-green-500 uppercase tracking-tight">{c.author_username}</span>
-                  <span className="text-[9px] font-bold text-slate-600 uppercase italic">Agora mesmo</span>
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed">{c.text}</p>
-              </div>
-            </div>
-          ))
-        ) : (
-          <p className="text-center py-4 text-slate-600 text-[10px] font-bold uppercase italic">Ninguém falou nada ainda...</p>
-        )}
+      <div className="pb-10">
+        {rootComments.map(c => (
+          <CommentNode key={c.id} comment={c} allComments={comments} postId={postId} user={user} />
+        ))}
       </div>
     </div>
   );
@@ -1486,198 +1236,108 @@ export default function Comments({ postId, user }) {
 
 # === Início do arquivo: ./src/components/CreatePost.jsx ===
 
-import { useState } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import axios from "axios"
-import { useTranslation } from "react-i18next"
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
+import { Link as LinkIcon, AlignLeft, Hash, Send } from "lucide-react";
+import SearchableSelect from "./SearchableSelect";
 
 export default function CreatePost() {
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("link");
+  const [formData, setFormData] = useState({ title: "", url: "", content: "", sub_id: "", genre_id: "", tags: "" });
 
-  const { t } = useTranslation()
-  const queryClient = useQueryClient()
-
-  const [title, setTitle] = useState("")
-  const [url, setUrl] = useState("")
-  const [content, setContent] = useState("")
-  const [image, setImage] = useState(null)
-  const [genre, setGenre] = useState("")
-  const [sub, setSub] = useState("")
-
-  const { data: genresData = [] } = useQuery({
-    queryKey: ["genres"],
-    queryFn: () => axios.get("/genres").then(res => res.data)
-  })
-
-  const { data: subsData = [] } = useQuery({
-    queryKey: ["subs"],
-    queryFn: () => axios.get("/subs").then(res => res.data)
-  })
-
-  const genres = Array.isArray(genresData) ? genresData : []
-  const subs = Array.isArray(subsData) ? subsData : []
+  const { data: subs = [] } = useQuery({ queryKey: ["subs"], queryFn: () => axios.get("/subs").then(res => res.data) });
+  const { data: genres = [] } = useQuery({ queryKey: ["genres"], queryFn: () => axios.get("/genres").then(res => res.data) });
 
   const createMutation = useMutation({
-
-    mutationFn: (formData) => axios.post("/posts", formData),
-
-                                     onSuccess: () => {
-
-                                       queryClient.invalidateQueries(["posts"])
-
-                                       setTitle("")
-                                       setUrl("")
-                                       setContent("")
-                                       setImage(null)
-                                       setGenre("")
-                                       setSub("")
-
-                                     }
-
-  })
-
-  const handleSubmit = (e) => {
-
-    e.preventDefault()
-
-    const formData = new FormData()
-
-    formData.append("title", title)
-      formData.append("url", url)
-        formData.append("content", content)
-
-          if (genre) formData.append("genre", genre)
-            if (sub) formData.append("sub", sub)
-
-              if (image) formData.append("image", image)
-
-                createMutation.mutate(formData)
-
-  }
+    mutationFn: (payload) => axios.post("/posts", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["posts"]);
+      setFormData({ title: "", url: "", content: "", sub_id: "", genre_id: "", tags: "" });
+      alert("Postado!");
+    }
+  });
 
   return (
+    <div className="bg-[#0f1115] border border-white/10 rounded-[32px] overflow-hidden shadow-2xl mb-12 transition-all">
+      <div className="flex border-b border-white/5 bg-black/20">
+        <button onClick={() => setActiveTab("link")} className={`flex-1 py-4 text-[10px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-2 ${activeTab==='link' ? 'bg-green-600 text-white' : 'text-slate-500'}`}><LinkIcon size={14}/> Link</button>
+        <button onClick={() => setActiveTab("text")} className={`flex-1 py-4 text-[10px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-2 ${activeTab==='text' ? 'bg-green-600 text-white' : 'text-slate-500'}`}><AlignLeft size={14}/> Resenha</button>
+      </div>
 
-    <div className="bg-white/80 dark:bg-[#0f1115] border border-white/10 rounded-2xl p-6 mb-10">
+      <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(formData); }} className="p-8 space-y-6">
+        <div className="space-y-1">
+          <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Título</label>
+          <input required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="Artista - Música" className="w-full bg-black/20 border border-white/10 p-4 rounded-2xl text-sm outline-none focus:border-green-500"/>
+        </div>
 
-    <h3 className="font-black text-lg mb-4">
+        {activeTab === "link" && (
+          <div className="space-y-1">
+            <label className="text-[10px] font-black uppercase text-slate-500 ml-1">URL (YouTube / Spotify)</label>
+            <input required value={formData.url} onChange={e => setFormData({...formData, url: e.target.value})} placeholder="https://..." className="w-full bg-black/20 border border-white/10 p-4 rounded-2xl text-sm outline-none focus:border-green-500 italic text-green-500"/>
+          </div>
+        )}
 
-    🎧 {t("create_post", "Compartilhar música")}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <SearchableSelect 
+            label="Comunidade" 
+            options={subs} 
+            placeholder="Buscar s/..." 
+            onSelect={(id) => setFormData({...formData, sub_id: id})} 
+          />
+          <SearchableSelect 
+            label="Gênero Principal" 
+            options={genres} 
+            placeholder="Buscar gênero..." 
+            onSelect={(id) => setFormData({...formData, genre_id: id})} 
+          />
+        </div>
 
-    </h3>
+        <div className="space-y-1">
+          <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Resenha / Descrição (Opcional)</label>
+          <textarea value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} rows="3" className="w-full bg-black/20 border border-white/10 p-4 rounded-2xl text-sm outline-none focus:border-green-500 resize-none"/>
+        </div>
 
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-
-    {/* título */}
-
-    <input
-    type="text"
-    placeholder="Aphex Twin - Windowlicker"
-    value={title}
-    onChange={(e)=>setTitle(e.target.value)}
-    required
-    className="p-3 rounded-xl bg-white/70 dark:bg-black/30 border border-white/10"
-    />
-
-    {/* url */}
-
-    <input
-    type="url"
-    placeholder="YouTube / Spotify / SoundCloud URL"
-    value={url}
-    onChange={(e)=>setUrl(e.target.value)}
-    required
-    className="p-3 rounded-xl bg-white/70 dark:bg-black/30 border border-white/10"
-    />
-
-    {/* conteúdo */}
-
-    <textarea
-    placeholder="Comentário (opcional)"
-    value={content}
-    onChange={(e)=>setContent(e.target.value)}
-    className="p-3 rounded-xl bg-white/70 dark:bg-black/30 border border-white/10"
-    />
-
-    {/* gênero */}
-
-    <select
-    value={genre}
-    onChange={(e)=>setGenre(e.target.value)}
-    className="p-3 rounded-xl bg-white/70 dark:bg-black/30 border border-white/10"
-    >
-
-    <option value="">
-    {t("genre", "Gênero")}
-    </option>
-
-    {genres.map(g => (
-
-      <option key={g.id} value={g.id}>
-
-      {g.name}
-
-      </option>
-
-    ))}
-
-    </select>
-
-    {/* comunidade */}
-
-    <select
-    value={sub}
-    onChange={(e)=>setSub(e.target.value)}
-    className="p-3 rounded-xl bg-white/70 dark:bg-black/30 border border-white/10"
-    >
-
-    <option value="">
-    {t("community", "Comunidade")}
-    </option>
-
-    {subs.map(s => (
-
-      <option key={s.id} value={s.id}>
-
-      s/{s.slug}
-
-      </option>
-
-    ))}
-
-    </select>
-
-    {/* imagem */}
-
-    <input
-    type="file"
-    onChange={(e)=>setImage(e.target.files[0])}
-    className="text-sm"
-    />
-
-    {/* botão */}
-
-    <button
-    type="submit"
-    disabled={createMutation.isPending}
-    className="bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700 transition"
-    >
-
-    {createMutation.isPending
-      ? t("posting","Postando...")
-      : t("post","Postar")
-    }
-
-    </button>
-
-    </form>
-
+        <button type="submit" className="w-full bg-green-600 text-white font-black uppercase py-5 rounded-2xl hover:bg-green-500 transition-all shadow-xl shadow-green-600/20 active:scale-95">
+          {createMutation.isPending ? "Publicando..." : "Publicar na Music Page"}
+        </button>
+      </form>
     </div>
-
-  )
-
+  );
 }
 
 
 # === Fim do arquivo: ./src/components/CreatePost.jsx ===
+
+# === Início do arquivo: ./src/components/DiscoveryTicker.jsx ===
+
+import { Zap, Music } from "lucide-react";
+
+export default function DiscoveryTicker() {
+  const discoveries = [
+    "u/admin acabou de descobrir uma relíquia de IDM",
+    "Comunidade s/techno em alta (+25%)",
+    "Novo set de Daft Punk subindo no ranking",
+    "Mood 'Noite de Chuva' é o mais buscado hoje"
+  ];
+
+  return (
+    <div className="w-full bg-green-600/10 border-y border-green-600/20 py-2 overflow-hidden whitespace-nowrap relative">
+      <div className="flex animate-marquee gap-10">
+        {[...discoveries, ...discoveries].map((text, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <Zap size={10} className="text-green-500 fill-green-500" />
+            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">{text}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+# === Fim do arquivo: ./src/components/DiscoveryTicker.jsx ===
 
 # === Início do arquivo: ./src/components/GenreFilter.jsx ===
 
@@ -1697,7 +1357,7 @@ export default function GenreFilter({ activeGenre, onSelect }) {
 
   const { data: genresData } = useQuery({
     queryKey: ['genres'],
-    queryFn: () => axios.get('/genres').then(res => res.data),
+    queryFn: () => api.get('/genres').then(res => res.data),
                                         staleTime: 1000 * 60 * 10,
   })
 
@@ -1875,30 +1535,61 @@ export default function GenreSearchSelect({ genres, selectedId, onSelect }) {
 
 # === Início do arquivo: ./src/components/GraphExplorer.jsx ===
 
-import { useState } from "react";
-import { apiGet } from "../api/api";
+import { useState, useEffect } from "react";
+import axios from "axios";
+import { Share2, Zap, Loader2 } from "lucide-react";
 
 export default function GraphExplorer() {
-  const [node, setNode] = useState("techno");
-  const [data, setData] = useState([]);
+  const [node, setNode] = useState("Techno");
+  const [related, setRelated] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  async function load() {
-    const res = await apiGet(`/graph?node=${node}`);
-    setData(res);
-  }
+  const explore = async (targetNode) => {
+    const term = targetNode || node;
+    if (!term) return;
+    setLoading(true);
+    try {
+      const res = await axios.get('/graph', { params: { node: term } });
+      setRelated(res.data);
+      if (targetNode) setNode(targetNode);
+    } catch (err) {
+      console.error("Erro no Grafo:", err);
+    }
+    setLoading(false);
+  };
+
+  // Carrega Techno por padrão ao montar o componente
+  useEffect(() => { explore("Techno"); }, []);
 
   return (
-    <div>
-      <h2>🔗 Grafo Musical</h2>
+    <div className="bg-[#0f1115] border border-white/10 p-5 rounded-[32px] ai-glow">
+      <h4 className="text-[10px] font-black uppercase text-green-500 mb-4 flex items-center gap-2">
+        <Share2 size={12} /> Grafo de Conexões IA
+      </h4>
+      
+      <div className="flex gap-2 mb-4">
+        <input 
+          value={node} 
+          onChange={e => setNode(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && explore()}
+          className="flex-1 bg-black/40 border border-white/5 rounded-xl px-3 py-2 text-[11px] outline-none focus:border-green-600 transition-all"
+        />
+        <button onClick={() => explore()} className="bg-green-600 p-2 rounded-xl text-white">
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+        </button>
+      </div>
 
-      <input value={node} onChange={(e) => setNode(e.target.value)} />
-      <button onClick={load}>Explorar</button>
-
-      <ul>
-        {data.map((d, i) => (
-          <li key={i}>{d}</li>
-        ))}
-      </ul>
+      <div className="flex flex-wrap gap-2 min-h-[40px]">
+        {related.length > 0 ? related.map(item => (
+          <button 
+            key={item} 
+            onClick={() => explore(item)}
+            className="text-[9px] font-bold bg-white/5 px-2 py-1.5 rounded-lg border border-white/5 text-slate-400 hover:text-green-500 hover:border-green-600 transition-all hover:scale-105"
+          >
+            {item}
+          </button>
+        )) : !loading && <span className="text-[9px] text-slate-600 italic">Pesquise por 'House' ou '90s'...</span>}
+      </div>
     </div>
   );
 }
@@ -1940,6 +1631,88 @@ export default function HybridPlaylist() {
 
 # === Fim do arquivo: ./src/components/HybridPlaylist.jsx ===
 
+# === Início do arquivo: ./src/components/LeaderboardWidget.jsx ===
+
+import { useQuery } from "@tanstack/react-query";
+import axios from "axios";
+import { Zap, Trophy } from "lucide-react";
+
+export default function LeaderboardWidget() {
+  const { data: m, isLoading } = useQuery({
+    queryKey: ["leaderboard"],
+    queryFn: () => axios.get("/analytics").then(res => res.data),
+    refetchInterval: 30000,
+    initialData: { top_scouts: [] }
+  });
+
+  const scouts = m?.top_scouts || [];
+
+  if (isLoading && scouts.length === 0) return <div className="animate-pulse text-[10px] text-slate-500">Calculando Karma...</div>;
+
+  return (
+    <div className="space-y-3">
+      {scouts.length > 0 ? scouts.map((s, i) => (
+        <div key={i} className="flex justify-between items-center group">
+          <div className="flex items-center gap-3">
+            <div className={`w-5 h-5 rounded-lg flex items-center justify-center text-[10px] font-black ${i === 0 ? 'bg-yellow-500 text-black' : 'bg-white/10 text-slate-500'}`}>
+              {i + 1}
+            </div>
+            <span className="text-[11px] font-bold text-slate-300 group-hover:text-green-500 transition-colors">u/{s.username}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Zap size={10} className="text-green-500" fill="currentColor" />
+            <span className="text-[10px] font-black text-slate-400">{s.total_score || 0}</span>
+          </div>
+        </div>
+      )) : (
+        <p className="text-[10px] text-slate-600 italic">Nenhum scout ativo no período...</p>
+      )}
+    </div>
+  );
+}
+
+
+# === Fim do arquivo: ./src/components/LeaderboardWidget.jsx ===
+
+# === Início do arquivo: ./src/components/LivePulse.jsx ===
+
+import { useQuery } from "@tanstack/react-query";
+import api from "@/lib/api";
+import { Users, Radio } from "lucide-react";
+
+export default function LivePulse() {
+  const { data: stats } = useQuery({
+    queryKey: ["stats"],
+    queryFn: () => api.get("/stats").then((res) => res.data),
+    refetchInterval: 30000, // Atualiza a cada 30s
+  });
+
+  return (
+    <div className="flex flex-col gap-4 bg-green-600/5 border border-green-600/20 p-4 rounded-2xl">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Users size={14} className="text-green-500" />
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Comunidade</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+          </span>
+          <span className="text-[10px] font-bold text-green-500">{stats?.online_count || 0} online</span>
+        </div>
+      </div>
+      
+      <div className="text-xl font-black italic tracking-tighter">
+        {stats?.total_members || 0} <span className="text-xs font-normal text-slate-500 not-italic">membros ativos</span>
+      </div>
+    </div>
+  );
+}
+
+
+# === Fim do arquivo: ./src/components/LivePulse.jsx ===
+
 # === Início do arquivo: ./src/components/MoodSearch.jsx ===
 
 import { useState } from "react";
@@ -1950,7 +1723,7 @@ export default function MoodSearch() {
   const [results, setResults] = useState([]);
 
   async function search() {
-    const data = await apiGet(`/mood?q=${q}`);
+    if (!q.trim()) return; const data = await apiGet(`/mood?q=${q}`);
     setResults(data);
   }
 
@@ -1981,290 +1754,41 @@ export default function MoodSearch() {
 
 # === Início do arquivo: ./src/components/MusicCard.jsx ===
 
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useTranslation } from 'react-i18next'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate, Link } from 'react-router-dom'
 import axios from 'axios'
-import {
-  ArrowBigUp,
-  ArrowBigDown,
-  MessageSquare,
-  Share2,
-  Bookmark,
-  ExternalLink,
-  MoreHorizontal,
-  User as UserIcon,
-  Play
-} from 'lucide-react'
-import Comments from './Comments'
+import { ArrowBigUp, Play, Activity } from 'lucide-react'
 
-export default function MusicCard({ post, user }) {
+export default function MusicCard({ post }) {
+  const navigate = useNavigate()
 
-  const { t } = useTranslation()
-  const [showComments, setShowComments] = useState(false)
-  const queryClient = useQueryClient()
-
-  const voteMutation = useMutation({
-    mutationFn: () => axios.post(`/posts/${post?.id}/upvote`),
-                                   onSuccess: () => queryClient.invalidateQueries(['posts']),
-                                   onError: (err) => {
-                                     if (err.response?.status === 401)
-                                       alert(t('login_to_vote', 'Faça login para votar'))
-                                   }
-  })
-
-  const saveMutation = useMutation({
-    mutationFn: () => axios.post(`/posts/${post?.id}/save`),
-                                   onSuccess: () => {
-                                     queryClient.invalidateQueries(['posts'])
-                                     queryClient.invalidateQueries(['saved-posts'])
-                                   },
-                                   onError: (err) => {
-                                     if (err.response?.status === 401)
-                                       alert(t('login_to_save', 'Faça login para salvar'))
-                                   }
-  })
-
-  if (!post) return null
-
-    return (
-
-      <div className="group relative bg-white/90 dark:bg-[#0f1115] border border-white/20 rounded-[32px] flex flex-col transition-all duration-300 hover:border-green-500/30 hover:shadow-[0_0_40px_-15px_rgba(0,200,83,0.4)] overflow-hidden">
-
-      <div className="flex">
-
-      {/* COLUNA DE VOTOS */}
-
-      <div className="w-12 md:w-14 flex flex-col items-center py-6 bg-black/20 rounded-l-[32px] border-r border-white/20 shrink-0">
-
-      <button
-      onClick={() => voteMutation.mutate()}
-      className={`p-1 transition-all transform active:scale-150 ${post.voted ? 'text-green-500' : 'text-slate-500 hover:text-green-400'}`}
-      >
-
-      <ArrowBigUp
-      size={32}
-      fill={post.voted ? "currentColor" : "none"}
-      strokeWidth={post.voted ? 2.5 : 2}
-      />
-
-      </button>
-
-      <span className={`text-sm font-black my-1 ${post.voted ? 'text-green-500' : 'text-slate-200'}`}>
-      {post.score || 0}
-      </span>
-
-      <button className="p-1 text-slate-500 hover:text-red-500">
-      <ArrowBigDown size={32}/>
-      </button>
-
-      </div>
-
-      {/* CONTEÚDO */}
-
-      <div className="flex-1 p-5 md:p-7 min-w-0">
-
-      {/* HEADER */}
-
-      <div className="flex justify-between items-start mb-4">
-
-      <div className="flex items-center gap-3">
-
-      <Link
-      to={`/profile/${post.author_username}`}
-      className="flex items-center gap-2"
-      >
-
-      <div className="w-6 h-6 rounded-lg bg-green-600 flex items-center justify-center text-[10px] font-black text-white">
-
-      {post.author_username?.[0]?.toUpperCase() || <UserIcon size={12}/>}
-
-      </div>
-
-      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-      u/{post.author_username || 'anon'}
-      </span>
-
-      </Link>
-
-      {post.genre_name && (
-
-        <span className="bg-green-600/10 text-green-500 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border border-green-500/10">
-
-        {post.genre_name}
-
-        </span>
-
-      )}
-
-      </div>
-
-      <button className="text-slate-600 hover:text-white">
-      <MoreHorizontal size={20}/>
-      </button>
-
-      </div>
-
-      {/* TÍTULO */}
-
-      <h3 className="text-xl md:text-2xl font-black text-white mb-1 leading-tight group-hover:text-green-400 transition-colors">
-      {post.title}
-      </h3>
-
-      {post.artist && (
-
-        <Link
-        to={`/artist/${post.artist.slug}`}
-        className="text-xs text-green-500 font-bold mb-3 block hover:underline"
-        >
-
-        {post.artist.name}
-
-        </Link>
-
-      )}
-
-      {/* TEXTO */}
-
-      {post.content && (
-
-        <p className="text-slate-400 text-sm mb-5 italic">
-
-        {post.content}
-
-        </p>
-
-      )}
-
-      {/* IMAGEM */}
-
-      {post.image && (
-
-        <div className="mb-6 rounded-2xl overflow-hidden border border-white/20">
-
-        <img
-        src={post.image}
-        alt={post.title}
-        className="w-full max-h-[500px] object-cover"
-        />
-
+  return (
+    <div 
+      onClick={() => navigate(`/post/${post.id}`)}
+      className="group bg-[#0f1115] border border-white/5 rounded-[32px] p-6 mb-4 hover:border-green-500/30 transition-all cursor-pointer shadow-2xl"
+    >
+      <div className="flex gap-6">
+        <div className="flex flex-col items-center gap-1" onClick={e => e.stopPropagation()}>
+          <button className="text-slate-600 hover:text-green-500 transition-colors"><ArrowBigUp size={30}/></button>
+          <span className="text-xs font-black text-slate-500">{post.score}</span>
         </div>
-
-      )}
-
-      {/* PLAYER / LINK */}
-
-      <div className="relative mb-8">
-
-      {/* THUMBNAIL */}
-      {post.thumbnail && (
-        <div className="mb-4 rounded-2xl overflow-hidden border border-white/10 cursor-pointer group"
-             onClick={() => window.open(post.url || post.embed_url, "_blank")}>
-          <img
-            src={post.thumbnail}
-            alt={post.title}
-            className="w-full h-56 object-cover group-hover:scale-105 transition-transform duration-300"
-          />
+        
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+            <span>u/{post.author_username}</span>
+            <span className="text-green-500">s/{post.sub_slug}</span>
+          </div>
+          <h3 className="text-xl font-black text-white mb-4 truncate group-hover:text-green-500 transition-colors">{post.title}</h3>
+          
+          <div className="relative rounded-2xl overflow-hidden h-32 bg-black/40 border border-white/5">
+            <img src={post.thumbnail || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=800'} className="w-full h-full object-cover opacity-50" alt="" />
+            <div className="absolute inset-0 flex items-center justify-center">
+               <Play size={24} className="text-white opacity-50 group-hover:opacity-100 transition-opacity" />
+            </div>
+          </div>
         </div>
-      )}
-      {post.embed_url ? (
-
-        <div className="rounded-2xl overflow-hidden border border-white/10">
-
-        <iframe
-        src={post.embed_url}
-        className="w-full h-[200px]"
-        allow="autoplay; encrypted-media"
-        loading="lazy"
-        title={post.title}
-        />
-
-        </div>
-
-      ) : (
-
-        <a
-        href={post.url}
-        target="_blank"
-        rel="noreferrer"
-        className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/20 hover:bg-white/10 transition-all"
-        >
-
-        <div className="flex items-center gap-3 truncate">
-
-        <div className="w-8 h-8 bg-green-600/20 rounded-lg flex items-center justify-center text-green-500">
-
-        <Play size={14} fill="currentColor"/>
-
-        </div>
-
-        <span className="text-sm text-slate-500 italic truncate">
-
-        {post.url}
-
-        </span>
-
-        </div>
-
-        <ExternalLink size={16}/>
-
-        </a>
-
-      )}
-
       </div>
-
-      {/* AÇÕES */}
-
-      <div className="flex flex-wrap gap-3 items-center pt-2 border-t border-white/20">
-
-      <button
-      onClick={() => setShowComments(!showComments)}
-      className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-2 rounded-xl ${showComments ? 'bg-green-500/10 text-green-500' : 'text-slate-500 hover:bg-white/5 hover:text-white'}`}
-      >
-
-      <MessageSquare size={16}/>
-      {t('discussion')}
-
-      </button>
-
-      <button
-      onClick={() => saveMutation.mutate()}
-      className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-2 rounded-xl ${post.is_saved ? 'bg-yellow-500/10 text-yellow-500' : 'text-slate-500 hover:bg-white/5 hover:text-white'}`}
-      >
-
-      <Bookmark size={16} fill={post.is_saved ? "currentColor" : "none"}/>
-
-      {post.is_saved ? t('saved') : t('save')}
-
-      </button>
-
-      <button className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:bg-white/5 hover:text-white px-3 py-2 rounded-xl">
-
-      <Share2 size={16}/>
-      {t('share')}
-
-      </button>
-
-      </div>
-
-      {/* COMENTÁRIOS */}
-
-      {showComments && (
-
-        <div className="mt-6">
-
-        <Comments postId={post.id} user={user}/>
-
-        </div>
-
-      )}
-
-      </div>
-      </div>
-      </div>
-    )
+    </div>
+  )
 }
 
 
@@ -2282,7 +1806,7 @@ export default function NotificationsDropdown({ notifications }) {
   const queryClient = useQueryClient();
 
   const readMutation = useMutation({
-    mutationFn: () => axios.post('http://localhost:8000/api/notifications/read-all'),
+    mutationFn: () => api.post('/api/notifications/read-all'),
     onSuccess: () => queryClient.invalidateQueries(['notifications']),
   });
 
@@ -2337,6 +1861,111 @@ export default function NotificationsDropdown({ notifications }) {
 
 # === Fim do arquivo: ./src/components/NotificationsDropdown.jsx ===
 
+# === Início do arquivo: ./src/components/PlayerModal.jsx ===
+
+export default function PlayerModal({ post, onClose }) {
+  if (!post) return null
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+      <div className="bg-zinc-900 p-6 rounded-xl w-[500px]">
+
+        <button
+          className="text-white mb-3"
+          onClick={onClose}
+        >
+          ✖ fechar
+        </button>
+
+        <h2 className="text-white text-xl mb-2">{post.title}</h2>
+
+        {/* YOUTUBE */}
+        {post.youtube_id && (
+          <iframe
+            src={`https://www.youtube.com/embed/${post.youtube_id}?autoplay=1`}
+            className="w-full h-64"
+            allow="autoplay"
+          />
+        )}
+
+        {/* SPOTIFY PREVIEW */}
+        {post.preview_url && (
+          <audio controls autoPlay className="w-full mt-3">
+            <source src={post.preview_url} />
+          </audio>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+# === Fim do arquivo: ./src/components/PlayerModal.jsx ===
+
+# === Início do arquivo: ./src/components/SearchableSelect.jsx ===
+
+import { useState, useRef, useEffect } from 'react';
+import { Search, ChevronDown } from 'lucide-react';
+
+export default function SearchableSelect({ options, placeholder, onSelect, label }) {
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const filtered = options.filter(opt => 
+    opt.name.toLowerCase().includes(query.toLowerCase())
+  );
+
+  useEffect(() => {
+    const clickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setIsOpen(false);
+    };
+    document.addEventListener("mousedown", clickOutside);
+    return () => document.removeEventListener("mousedown", clickOutside);
+  }, []);
+
+  return (
+    <div className="space-y-2 relative" ref={containerRef}>
+      <label className="text-[10px] font-black uppercase text-slate-500 ml-1">{label}</label>
+      <div className="relative group">
+        <input
+          type="text"
+          value={query}
+          onFocus={() => setIsOpen(true)}
+          onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
+          placeholder={placeholder}
+          className="w-full bg-black/20 border border-white/10 p-4 rounded-2xl text-sm outline-none focus:border-green-500 transition-all"
+        />
+        <ChevronDown size={16} className={`absolute right-4 top-4 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-50 w-full mt-2 bg-[#12141a] border border-white/10 rounded-2xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar animate-in zoom-in-95">
+          {filtered.length > 0 ? filtered.map(opt => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => {
+                onSelect(opt.id);
+                setQuery(opt.name);
+                setIsOpen(false);
+              }}
+              className="w-full text-left p-4 text-sm hover:bg-green-600 transition-colors border-b border-white/5 last:border-0"
+            >
+              {opt.slug ? `s/${opt.slug}` : opt.name}
+            </button>
+          )) : (
+            <div className="p-4 text-xs text-slate-600 italic">Nada encontrado...</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+# === Fim do arquivo: ./src/components/SearchableSelect.jsx ===
+
 # === Início do arquivo: ./src/components/SkeletonCard.jsx ===
 
 export default function SkeletonCard() {
@@ -2387,6 +2016,86 @@ export default function SubSidebar({ subs }) {
 
 # === Fim do arquivo: ./src/components/SubSidebar.jsx ===
 
+# === Início do arquivo: ./src/components/YoutubeIngest.jsx ===
+
+import { useState } from "react";
+import axios from "axios";
+import { Youtube, Search, Send, Loader2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+
+export default function YoutubeIngest() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingPost, setLoadingPost] = useState(null);
+  const queryClient = useQueryClient();
+
+  const handleSearch = async () => {
+    if (!query) return;
+    setLoading(true);
+    try {
+      const res = await axios.get('/youtube/search', { params: { q: query } });
+      setResults(res.data);
+    } catch (err) { console.error(err); }
+    setLoading(false);
+  };
+
+  const handlePost = async (video) => {
+    setLoadingPost(video.url);
+    try {
+      await axios.post('/youtube/ingest', { title: video.title, url: video.url });
+      queryClient.invalidateQueries(['posts']);
+      alert("Sucesso! Música postada e analisada pela IA.");
+      setResults([]);
+      setQuery("");
+    } catch (err) {
+      alert("Erro ao postar. Verifique se está logado.");
+    }
+    setLoadingPost(null);
+  };
+
+  return (
+    <div className="bg-red-500/5 border border-red-500/10 p-5 rounded-[32px] ai-glow">
+      <h4 className="text-[10px] font-black uppercase text-red-500 mb-4 flex items-center gap-2">
+        <Youtube size={14} /> Importador Rápido
+      </h4>
+      <div className="flex gap-2 mb-4">
+        <input 
+          value={query} 
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSearch()}
+          placeholder="Busca direta no YouTube..."
+          className="flex-1 bg-black/40 border border-white/5 rounded-xl px-3 py-2 text-[10px] outline-none focus:border-red-500 transition-all"
+        />
+        <button onClick={handleSearch} className="bg-red-600 p-2 rounded-xl text-white">
+          {loading ? <Loader2 size={16} className="animate-spin"/> : <Search size={16}/>}
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {results.map((v, i) => (
+          <div key={i} className="flex items-center gap-3 bg-white/5 p-2 rounded-xl border border-white/5">
+            <img src={v.thumbnail} className="w-12 h-8 object-cover rounded-lg" alt="" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[9px] font-bold truncate text-slate-300">{v.title}</p>
+              <button 
+                onClick={() => handlePost(v)}
+                className="text-[8px] font-black uppercase text-red-500 hover:text-white transition-colors"
+              >
+                {loadingPost === v.url ? "Processando..." : "Postar Agora"}
+              </button>
+            </div>
+            <Send size={12} className="text-slate-600" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+# === Fim do arquivo: ./src/components/YoutubeIngest.jsx ===
+
 # === Início do arquivo: ./src/api/api.js ===
 
 export async function apiGet(url) {
@@ -2397,99 +2106,334 @@ export async function apiGet(url) {
 
 # === Fim do arquivo: ./src/api/api.js ===
 
-# === Início do arquivo: ./src/pages/ArtistPage.jsx ===
+# === Início do arquivo: ./src/lib/api.js ===
 
-import { useParams, Link } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
 import axios from "axios"
 
-import MusicCard from "../components/MusicCard"
+function getCSRFToken() {
+  const name = "csrftoken"
+  const cookies = document.cookie.split(";")
 
-export default function ArtistPage(){
+  for (let c of cookies) {
+    const cookie = c.trim()
+    if (cookie.startsWith(name + "=")) {
+      return decodeURIComponent(cookie.substring(name.length + 1))
+    }
+  }
+  return null
+}
 
-    const { slug } = useParams()
+const api = axios.create({
+  baseURL: "/api",
+  withCredentials: true
+})
 
-    const { data, isLoading } = useQuery({
+api.interceptors.request.use((config) => {
+  const csrf = getCSRFToken()
+  if (csrf) {
+    config.headers["X-CSRFToken"] = csrf
+  }
+  return config
+})
 
-        queryKey:["artist", slug],
+export default api
 
-        queryFn:()=>axios.get(`/artists/${slug}`).then(res=>res.data)
 
-    })
+# === Fim do arquivo: ./src/lib/api.js ===
 
-    if(isLoading) return <div className="p-10">Loading...</div>
+# === Início do arquivo: ./src/pages/AnalyticsPage.jsx ===
 
-        if(!data) return null
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
+import Plot from 'react-plotly.js';
+import { ArrowLeft, Activity, Brain } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
-            return (
+export default function AnalyticsPage() {
+  const [days, setDays] = useState(7);
 
-                <div className="max-w-5xl mx-auto px-6 py-10">
+  const { data: m, isLoading } = useQuery({
+    queryKey: ['global-analytics', days],
+    queryFn: () => axios.get(`/analytics`, { params: { days } }).then(res => res.data),
+    initialData: { 
+        daily_activity: [], 
+        audio_dna: { energy: 0, danceability: 0, valence: 0 }, 
+        genre_dist: {}, 
+        top_scouts: [],
+        period_events: 0,
+        total_catalog: 0
+    }
+  });
 
-                <h1 className="text-4xl font-black mb-6">
-                {data.artist.name}
-                </h1>
+  if (isLoading && !m.total_catalog) return <div className="min-h-screen flex items-center justify-center font-black text-green-500 animate-pulse">CARREGANDO...</div>;
 
-                {/* Gêneros */}
+  const darkLayout = {
+    paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+    font: { color: '#888', size: 10 }, margin: { t: 30, b: 30, l: 30, r: 30 },
+    showlegend: false
+  };
 
-                <div className="flex gap-2 mb-8">
+  return (
+    <div className="min-h-screen bg-[#050608] text-white p-6 md:p-12">
+      <Link to="/" className="text-slate-500 mb-8 block font-black text-[10px] uppercase">← Voltar</Link>
+      
+      <div className="flex justify-between items-center mb-12">
+        <h1 className="text-5xl font-black italic tracking-tighter flex items-center gap-4">
+          <Activity className="text-green-500" /> Insights
+        </h1>
+        <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
+          {[7, 30].map(v => (
+            <button key={v} onClick={() => setDays(v)} className={`px-4 py-2 rounded-lg text-[10px] font-black ${days === v ? 'bg-green-600 text-white' : 'text-slate-500'}`}>{v}d</button>
+          ))}
+        </div>
+      </div>
 
-                {data.genres.map(g=>(
-                    <span
-                    key={g}
-                    className="bg-green-600 text-white text-xs px-3 py-1 rounded-xl"
-                    >
-                    {g}
-                    </span>
-                ))}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Radar DNA */}
+        <div className="bg-[#0f1115] p-8 rounded-[40px] border border-white/5">
+          <h3 className="text-[10px] font-black uppercase text-green-500 mb-6 flex items-center gap-2"><Brain size={14}/> DNA Sônico</h3>
+          <Plot
+            data={[{
+              type: 'scatterpolar',
+              r: Object.values(m?.audio_dna || {}).map(v => v * 100),
+              theta: Object.keys(m?.audio_dna || {}).map(k => k.toUpperCase()),
+              fill: 'toself', fillcolor: 'rgba(0, 156, 59, 0.2)', line: { color: '#009c3b' }
+            }]}
+            layout={{ ...darkLayout, polar: { radialaxis: { visible: true, range: [0, 100], gridcolor: '#222' }, bgcolor: 'transparent' } }}
+            config={{ displayModeBar: false }}
+            style={{ width: '100%', height: '350px' }}
+          />
+        </div>
 
-                </div>
+        {/* Atividade */}
+        <div className="bg-[#0f1115] p-8 rounded-[40px] border border-white/5">
+          <h3 className="text-[10px] font-black uppercase text-slate-500 mb-6">Atividade</h3>
+          <Plot
+            data={[{
+              x: (m?.daily_activity || []).map(d => d.day),
+              y: (m?.daily_activity || []).map(d => d.count),
+              type: 'scatter', mode: 'lines+markers', line: { color: '#009c3b', shape: 'spline' }
+            }]}
+            layout={{ ...darkLayout, xaxis: { gridcolor: '#1a1a1a' }, yaxis: { gridcolor: '#1a1a1a' } }}
+            config={{ displayModeBar: false }}
+            style={{ width: '100%', height: '350px' }}
+          />
+        </div>
 
-                {/* Artistas relacionados */}
+        {/* Gêneros (Pie) */}
+        <div className="bg-[#0f1115] p-8 rounded-[40px] border border-white/5">
+          <h3 className="text-[10px] font-black uppercase text-slate-500 mb-6">Gêneros em Alta</h3>
+          <Plot
+            data={[{
+              values: Object.values(m?.genre_dist || {}),
+              labels: Object.keys(m?.genre_dist || {}),
+              type: 'pie', hole: 0.7, marker: { colors: ['#009c3b', '#006b28', '#ffdf00'] }
+            }]}
+            layout={darkLayout}
+            config={{ displayModeBar: false }}
+            style={{ width: '100%', height: '350px' }}
+          />
+        </div>
 
-                <h2 className="text-xl font-bold mb-4">
-                Related Artists
-                </h2>
+        {/* Scouts */}
+        <div className="bg-[#0f1115] p-8 rounded-[40px] border border-white/5">
+          <h3 className="text-[10px] font-black uppercase text-green-500 mb-8 italic">Curadores de Elite</h3>
+          <div className="space-y-4">
+            {(m?.top_scouts || []).map((s, i) => (
+              <div key={i} className="flex justify-between items-center bg-white/5 p-4 rounded-2xl border border-white/5">
+                <span className="font-black text-sm">u/{s.username}</span>
+                <span className="text-green-500 font-black italic">{s.total_score} pts</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-                <div className="flex flex-wrap gap-3 mb-10">
 
-                {data.related_artists.map(a=>(
+# === Fim do arquivo: ./src/pages/AnalyticsPage.jsx ===
 
-                    <Link
-                    key={a.slug}
-                    to={`/artist/${a.slug}`}
-                    className="px-3 py-1 bg-white/10 rounded-lg hover:bg-green-600"
-                    >
+# === Início do arquivo: ./src/pages/ArtistPage.jsx ===
 
-                    {a.name}
+import { useParams, Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import api from "@/lib/api";
+import MusicCard from "../components/MusicCard";
+import { Music, Share2, Info, ArrowLeft } from "lucide-react";
 
-                    </Link>
+export default function ArtistPage() {
+  const { slug } = useParams();
 
-                ))}
+  const { data, isLoading } = useQuery({
+    queryKey: ["artist", slug],
+    queryFn: () => api.get(`/artists/${slug}`).then((res) => res.data),
+  });
 
-                </div>
+  if (isLoading) return <div className="p-20 text-center animate-pulse font-black uppercase tracking-widest text-green-600">Sincronizando Artista...</div>;
+  if (!data) return null;
 
-                {/* Posts */}
+  return (
+    <div className="min-h-screen bg-musica text-white pb-20">
+      {/* Header Artístico */}
+      <div className="relative h-64 bg-gradient-to-b from-green-600/20 to-transparent flex items-end px-6 pb-10">
+        <Link to="/" className="absolute top-10 left-6 p-3 bg-black/20 rounded-2xl hover:bg-green-600 transition">
+          <ArrowLeft size={20} />
+        </Link>
+        <div className="max-w-7xl mx-auto w-full flex items-end gap-6">
+          <div className="w-32 h-32 bg-green-600 rounded-[32px] shadow-2xl flex items-center justify-center text-5xl font-black italic border-4 border-[#050608]">
+            {data.artist.name[0]}
+          </div>
+          <div>
+            <h1 className="text-6xl font-black italic tracking-tighter mb-2">{data.artist.name}</h1>
+            <div className="flex gap-2">
+              {data.genres.map(g => (
+                <span key={g} className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-[10px] font-black uppercase text-green-500">
+                  {g}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
 
-                <h2 className="text-xl font-bold mb-4">
-                Top Posts
-                </h2>
+      <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-12 mt-10">
+        {/* Lista de Músicas */}
+        <section className="space-y-6">
+          <h2 className="text-xs font-black uppercase tracking-[0.3em] text-slate-500 mb-6 italic">Top Curadoria</h2>
+          {data.posts.map(p => <MusicCard key={p.id} post={p} />)}
+        </section>
 
-                <div className="flex flex-col gap-6">
+        {/* Sidebar de Descoberta IA */}
+        <aside className="space-y-8">
+          <div className="bg-white/5 border border-white/10 p-6 rounded-[32px]">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-green-500 mb-6 flex items-center gap-2">
+              <Info size={14} /> Relacionados (Grafo IA)
+            </h3>
+            <div className="flex flex-col gap-3">
+              {data.related_artists.map(ra => (
+                <Link key={ra.slug} to={`/artist/${ra.slug}`} className="p-3 bg-black/20 rounded-xl hover:bg-green-600 transition group flex items-center justify-between">
+                  <span className="text-sm font-bold">{ra.name}</span>
+                  <Music size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                </Link>
+              ))}
+            </div>
+          </div>
 
-                {data.posts.map(p=>(
-                    <MusicCard key={p.id} post={p}/>
-                ))}
-
-                </div>
-
-                </div>
-
-            )
-
+          <div className="bg-white/5 border border-white/10 p-6 rounded-[32px]">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-4">Comunidades Ativas</h3>
+            <div className="flex flex-wrap gap-2">
+              {data.subs.map(s => (
+                <Link key={s} to={`/s/${s}`} className="text-xs font-bold text-slate-400 hover:text-green-500">
+                  s/{s}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
 }
 
 
 # === Fim do arquivo: ./src/pages/ArtistPage.jsx ===
+
+# === Início do arquivo: ./src/pages/PostPage.jsx ===
+
+import { useParams, Link } from "react-router-dom"
+import { useQuery } from "@tanstack/react-query"
+import axios from "axios"
+import { ArrowLeft, MessageSquare, Activity, Sparkles, Zap } from "lucide-react"
+import Comments from "../components/Comments"
+
+export default function PostPage() {
+  const { id } = useParams()
+
+  const { data: post, isLoading } = useQuery({
+    queryKey: ["post", id],
+    queryFn: () => axios.get(`/api/posts/${id}`).then(res => res.data)
+  })
+
+  const { data: related = [] } = useQuery({
+    queryKey: ["related", id],
+    queryFn: () => axios.get(`/api/posts/${id}/related`).then(res => res.data),
+    enabled: !!post
+  })
+
+  if (isLoading) return <div className="p-20 text-center font-black animate-pulse text-green-500 text-xs uppercase tracking-[0.5em]">Sintonizando Frequências...</div>
+
+  return (
+    <div className="min-h-screen bg-musica text-white pb-20">
+      <div className="max-w-6xl mx-auto px-6 pt-12">
+        <Link to="/" className="inline-flex items-center gap-2 text-slate-500 hover:text-green-500 mb-12 transition-all font-black text-[10px] uppercase tracking-[0.3em]">
+          <ArrowLeft size={16} /> Voltar ao Feed
+        </Link>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-16">
+          <main>
+            <header className="mb-10">
+              <div className="flex flex-wrap gap-2 mb-4">
+                {post.semantic_data?.tags?.slice(0, 3).map(tag => (
+                  <span key={tag} className="text-[9px] font-black uppercase bg-green-500/10 text-green-500 px-2 py-1 rounded"># {tag}</span>
+                ))}
+              </div>
+              <h1 className="text-5xl font-black italic tracking-tighter leading-none mb-4">{post.title}</h1>
+              <div className="text-sm font-bold text-slate-400">Curadoria por u/{post.author_username}</div>
+            </header>
+
+            <div className="mb-16 rounded-[40px] overflow-hidden border border-white/10 bg-black shadow-2xl">
+              {post.embed_url ? (
+                <iframe src={`${post.embed_url}?autoplay=0`} width="100%" height="450" frameBorder="0" allow="autoplay; encrypted-media; fullscreen;" className="w-full"></iframe>
+              ) : (
+                <div className="p-20 text-center bg-white/5">
+                   <a href={post.url} target="_blank" className="bg-green-600 px-10 py-4 rounded-2xl font-black uppercase text-xs">Abrir Fonte Original</a>
+                </div>
+              )}
+            </div>
+
+            {/* Wiki do Last.fm */}
+            {post.semantic_data?.summary && (
+              <div className="mb-16 p-8 bg-white/[0.02] border border-white/5 rounded-[32px]">
+                <h3 className="text-[10px] font-black uppercase text-slate-500 mb-4 flex items-center gap-2"><Sparkles size={14}/> Contexto Histórico (Last.fm)</h3>
+                <p className="text-sm text-slate-400 leading-relaxed italic" dangerouslySetInnerHTML={{ __html: post.semantic_data.summary }}></p>
+              </div>
+            )}
+
+            <section>
+              <h3 className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-500 mb-10 flex items-center gap-3">
+                <MessageSquare size={18} className="text-green-500" /> Discussão
+              </h3>
+              <Comments postId={post.id} user={true} />
+            </section>
+          </main>
+
+          <aside className="space-y-12">
+            <div>
+              <h4 className="text-[10px] font-black uppercase text-green-500 mb-6 flex items-center gap-2">
+                <Zap size={16} /> Deep Discovery
+              </h4>
+              <div className="space-y-4">
+                {related.map(r => (
+                  <Link key={r.id} to={`/post/${r.id}`} className="block p-4 bg-white/5 border border-white/5 rounded-2xl hover:border-green-500/50 transition-all group">
+                    <p className="text-xs font-black truncate group-hover:text-green-500 transition-colors">{r.title}</p>
+                    <p className="text-[9px] text-slate-500 uppercase mt-1">u/{r.author_username} • {r.score} pts</p>
+                  </Link>
+                ))}
+                {related.length === 0 && <p className="text-[10px] text-slate-600 italic font-medium">Nenhuma track com vibe parecida encontrada ainda...</p>}
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+# === Fim do arquivo: ./src/pages/PostPage.jsx ===
 
 # === Início do arquivo: ./src/pages/ProfilePage.jsx ===
 
@@ -2519,7 +2463,7 @@ export default function ProfilePage() {
 
   // 1. Verifica quem é o usuário logado para saber se o perfil é dele mesmo
   useEffect(() => {
-    axios.get('http://localhost:8000/api/me')
+    api.get('/api/me')
     .then(res => setCurrentUser(res.data))
     .catch(() => setCurrentUser(null));
   }, []);
@@ -2529,19 +2473,19 @@ export default function ProfilePage() {
   // 2. Busca os dados básicos do perfil (Karma, Data de ingresso)
   const { data: profile, isLoading: isLoadingProfile } = useQuery({
     queryKey: ['profile', username],
-    queryFn: () => axios.get(`http://localhost:8000/api/user/${username}`).then(res => res.data),
+    queryFn: () => api.get(`/api/user/${username}`).then(res => res.data),
   });
 
   // 3. Busca as postagens feitas por este usuário
   const { data: userPosts, isLoading: isLoadingPosts } = useQuery({
     queryKey: ['user-posts', username],
-    queryFn: () => axios.get(`http://localhost:8000/api/user/${username}/posts`).then(res => res.data),
+    queryFn: () => api.get(`/api/user/${username}/posts`).then(res => res.data),
   });
 
   // 4. Busca as postagens SALVAS (Biblioteca) - Apenas se for o próprio perfil
   const { data: savedPosts, isLoading: isLoadingSaved } = useQuery({
     queryKey: ['saved-posts'],
-    queryFn: () => axios.get('http://localhost:8000/api/me/saved').then(res => res.data),
+    queryFn: () => api.get('/api/me/saved').then(res => res.data),
                                                                    enabled: isOwnProfile && activeTab === 'saved', // Só busca se necessário
   });
 
@@ -2700,33 +2644,42 @@ export default function SubPage() {
 # === Início do arquivo: ./src/features/musicAI/AutoPlayerWidget.jsx ===
 
 import { useEffect, useState } from "react";
-import { apiGet } from "./api";
+import api from "@/lib/api";
+import { SkipForward, Play } from "lucide-react";
 
 export default function AutoPlayerWidget() {
   const [track, setTrack] = useState(null);
 
-  async function next() {
-    const data = await apiGet("/autoplay/next");
-    setTrack(data);
-  }
+  const fetchNext = async () => {
+    try {
+      const res = await api.get("/autoplay/next");
+      setTrack(res.data);
+    } catch (e) {
+      console.log("History empty");
+    }
+  };
 
-  useEffect(() => {
-    next();
-  }, []);
+  useEffect(() => { fetchNext(); }, []);
 
-  if (!track) return null;
+  if (!track) return <div className="text-[10px] text-slate-600 italic">Ouça algo para ativar o Autoplay IA...</div>;
 
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-xs">{track.title}</p>
-
-      <iframe
-        src={track.embed_url}
-        className="w-full h-[120px] rounded"
-      />
-
-      <button onClick={next} className="text-xs bg-green-600 p-1 rounded">
-        Next
+    <div className="flex flex-col gap-3">
+      <div className="group relative rounded-xl overflow-hidden border border-white/10 bg-black">
+        <img src={track.thumbnail || 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400'} className="w-full h-24 object-cover opacity-40 group-hover:opacity-60 transition-all" alt="" />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Play size={20} className="text-white fill-white" />
+        </div>
+        <div className="absolute bottom-0 left-0 w-full p-2 bg-gradient-to-t from-black to-transparent">
+          <p className="text-[10px] font-black truncate text-white">{track.title}</p>
+        </div>
+      </div>
+      
+      <button 
+        onClick={fetchNext}
+        className="flex items-center justify-center gap-2 bg-green-600/10 hover:bg-green-600/20 py-2 rounded-xl text-[10px] font-black uppercase text-green-500 transition-all border border-green-600/20"
+      >
+        <SkipForward size={14} /> Próxima da Vibe
       </button>
     </div>
   );
@@ -2738,34 +2691,52 @@ export default function AutoPlayerWidget() {
 # === Início do arquivo: ./src/features/musicAI/MoodWidget.jsx ===
 
 import { useState } from "react";
-import { apiGet } from "./api";
+import api from "@/lib/api";
+import { Search, Sparkles } from "lucide-react";
 
 export default function MoodWidget() {
   const [q, setQ] = useState("");
   const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  async function search() {
-    const data = await apiGet(`/mood?q=${q}`);
-    setResults(data);
-  }
+  const handleSearch = async () => {
+    if (!q) return;
+    setLoading(true);
+    try {
+      const res = await api.get(`/semantic-search?q=${q}`);
+      setResults(res.data);
+    } catch (err) { console.error(err); }
+    setLoading(false);
+  };
 
   return (
-    <div className="flex flex-col gap-2">
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="dark techno, sad..."
-        className="px-2 py-1 rounded bg-black/30 text-xs"
-      />
-      <button onClick={search} className="text-xs bg-green-600 p-1 rounded">
-        Buscar
-      </button>
+    <div className="flex flex-col gap-3">
+      <div className="relative">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+          placeholder="Ex: Noite chuvosa em SP..."
+          className="w-full pl-3 pr-10 py-2 rounded-xl bg-black/20 border border-white/10 text-[11px] outline-none focus:border-green-500 transition-all"
+        />
+        <button onClick={handleSearch} className="absolute right-2 top-1.5 text-green-500">
+          {loading ? <Sparkles size={16} className="animate-spin"/> : <Search size={16}/>}
+        </button>
+      </div>
 
-      {results.map((r, i) => (
-        <div key={i} className="text-xs text-slate-300">
-          {r.title}
-        </div>
-      ))}
+      <div className="space-y-2">
+        {results.map((r, i) => (
+          <div key={i} className="p-2 rounded-lg bg-white/5 border border-white/5 text-[10px] flex justify-between items-center group cursor-pointer hover:border-green-500 transition-all">
+            <span className="truncate flex-1 font-bold text-slate-300 group-hover:text-white">{r.title}</span>
+            <div className="flex items-center gap-1 ml-2">
+              <div className="w-8 h-1 bg-white/10 rounded-full overflow-hidden">
+                <div className="h-full bg-green-500" style={{ width: `${(r.score || 0.5) * 100}%` }}></div>
+              </div>
+              <span className="text-[8px] font-black text-green-500">{(r.score * 100).toFixed(0)}%</span>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2775,30 +2746,34 @@ export default function MoodWidget() {
 
 # === Início do arquivo: ./src/features/musicAI/PlaylistWidget.jsx ===
 
-import { useEffect, useState } from "react";
-import { apiGet } from "./api";
+import { useEffect, useState } from "react"
+import api from "@/lib/api"
 
 export default function PlaylistWidget() {
-  const [list, setList] = useState([]);
+  const [list, setList] = useState([])
 
   useEffect(() => {
-    load();
-  }, []);
-
-  async function load() {
-    const data = await apiGet("/playlist/hybrid?q=techno");
-    setList(data);
-  }
+    api.get("/playlist/hybrid?q=techno")
+      .then(res => setList(res.data))
+      .catch(() => {})
+  }, [])
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="space-y-3">
       {list.map((m, i) => (
-        <div key={i} className="text-xs text-slate-300">
-          {m.title}
+        <div key={i} className="flex gap-3 items-center">
+          <img
+            src={m.thumbnail || "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg"}
+            className="w-14 h-14 rounded-lg object-cover"
+          />
+          <div className="text-xs">
+            <div className="font-bold">{m.title}</div>
+            <div className="text-slate-500">{m.source}</div>
+          </div>
         </div>
       ))}
     </div>
-  );
+  )
 }
 
 

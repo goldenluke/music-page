@@ -8,7 +8,7 @@ export default function NotificationsDropdown({ notifications }) {
   const queryClient = useQueryClient();
 
   const readMutation = useMutation({
-    mutationFn: () => axios.post('http://localhost:8000/api/notifications/read-all'),
+    mutationFn: () => api.post('/api/notifications/read-all'),
     onSuccess: () => queryClient.invalidateQueries(['notifications']),
   });
 
