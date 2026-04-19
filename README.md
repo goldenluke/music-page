@@ -1,4 +1,4 @@
-# 🎧 Music Page — AI-Powered Social Music Platform
+# 🎧 MusicaBR — AI-Powered Social Music Platform
 
 > Uma plataforma social de descoberta musical com inteligência artificial, integrando Spotify, YouTube e Last.fm em um único feed inteligente.
 
