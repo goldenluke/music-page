@@ -1,308 +1,266 @@
-# 🎧 MusicaBR (Music Page)
+# 🎧 Music Page — AI-Powered Social Music Platform
 
-**MusicaBR** é um protótipo de rede social para descoberta musical inspirado na combinação de **Reddit, Last.fm e Spotify**.  
-A plataforma permite compartilhar músicas, organizar comunidades musicais e explorar relações entre **artistas, gêneros e posts** através de um **grafo musical navegável**.
-
-⚠️ **Status do projeto:**  
-O sistema ainda está em desenvolvimento e **não está online publicamente**, pois algumas vulnerabilidades e melhorias de segurança ainda precisam ser resolvidas.  
-
-Mesmo assim, **todo o código está disponível neste repositório** para estudo, testes e colaboração.
+> Uma plataforma social de descoberta musical com inteligência artificial, integrando Spotify, YouTube e Last.fm em um único feed inteligente.
 
 ---
 
-# 🌐 Arquitetura
+## 🚀 Visão Geral
 
-O projeto é dividido em duas partes principais:
+O **Music Page** é uma rede social musical onde usuários compartilham, descobrem e interagem com músicas em um feed dinâmico.
+
+Diferente de plataformas tradicionais, o Music Page utiliza **IA + dados externos + comportamento do usuário** para criar uma experiência altamente personalizada.
+
+---
+
+## 🧠 Diferencial
+
+> Não é só um feed musical.
+> É um **motor de recomendação multimodal em tempo real**.
+
+---
+
+## 🔥 Principais Funcionalidades
+
+### 🎧 Feed Social
+
+* Postagem de músicas (YouTube, Spotify, links externos)
+* Sistema de votos (upvote)
+* Comentários em tempo real
+* Salvamento (biblioteca pessoal)
+* Comunidades (estilo Reddit)
+
+---
+
+### 🤖 Inteligência Artificial
+
+#### 🧠 Embeddings (LLaMA-ready)
+
+* Representação vetorial de músicas e textos
+* Base para:
+
+  * busca semântica
+  * recomendação personalizada
+  * clusterização
+
+---
+
+#### 🔍 Busca por Mood (NLP)
+
+```bash
+/api/mood?q=dark techno
+```
+
+* Busca músicas por sentimento/texto
+* Similaridade via cosine similarity
+* Embeddings comparando:
+
+  * query do usuário
+  * embedding das músicas
+
+---
+
+#### 🔥 Playlist IA (Hybrid Ranking)
+
+```bash
+/api/playlist/hybrid?q=techno
+```
+
+Combina:
+
+* 🎧 Spotify (tracks)
+* 🎥 YouTube (vídeos)
+* 🧠 IA (embedding similarity)
+* 📈 Trending (popularidade)
+
+👉 resultado: ranking híbrido inteligente
+
+---
+
+#### ▶️ Autoplay Inteligente
+
+```bash
+/api/autoplay/next
+```
+
+* Fila infinita baseada em:
+
+  * histórico do usuário
+  * embeddings
+  * diversidade (evita bolha)
+* Estrutura pronta para:
+
+  * multi-armed bandit
+  * reinforcement learning
+
+---
+
+#### 🧬 Sistema de Recomendação
+
+* Ranking híbrido:
+
+  * IA (similaridade)
+  * Engajamento
+  * Tendência
+* Cold start resolvido via:
+
+  * popularidade
+  * clusters
+
+---
+
+#### 🔥 Exploração vs Exploração
+
+* Base preparado para:
+
+  * bandits
+  * diversidade controlada
+  * evitar bolha algorítmica
+
+---
+
+## 🌐 Integrações
+
+### 🎧 Spotify API
+
+* Busca de músicas
+* Metadata:
+
+  * título
+  * artista
+  * thumbnail
+  * embed player
+* Base para:
+
+  * BPM (futuro)
+  * energia da música
+
+---
+
+### 🎥 YouTube API
+
+* Busca de vídeos musicais
+* Embeds automáticos
+* Thumbnails
+* Fallback quando Spotify falha
+
+---
+
+### 🎵 Last.fm API
+
+* Dados enriquecidos:
+
+  * artistas relacionados
+  * tags
+  * popularidade
+* Usado para:
+
+  * grafo musical
+  * expansão de recomendação
+
+---
+
+## 🔗 Grafo Musical
+
+```bash
+/api/graph?node=techno
+```
+
+* Conecta:
+
+  * artistas
+  * gêneros
+  * músicas
+* Base para:
+
+  * descoberta exploratória
+  * navegação inteligente
+
+---
+
+## 🎨 Frontend
+
+### ⚛️ Stack
+
+* React + Vite
+* TailwindCSS
+* React Query
+* i18n (multi-idioma)
+
+---
+
+### ✨ Features
+
+* Feed infinito (infinite scroll)
+* Tema dark/light
+* Tradução automática (pt, en, es, fr, de)
+* Player embutido (Spotify + YouTube)
+* Thumbnails dinâmicas
+* UX moderna (hover, animações)
+
+---
+
+## 🏗️ Backend
+
+### 🐍 Stack
+
+* Django
+* Django Ninja (API)
+* PostgreSQL (recomendado)
+* NumPy (IA)
+
+---
+
+### 📡 Endpoints principais
+
+| Endpoint               | Função          |
+| ---------------------- | --------------- |
+| `/api/posts`           | feed            |
+| `/api/mood`            | busca semântica |
+| `/api/playlist/hybrid` | playlist IA     |
+| `/api/autoplay/next`   | autoplay        |
+| `/api/graph`           | grafo musical   |
+| `/api/genres`          | gêneros         |
+| `/api/subs`            | comunidades     |
+
+---
+
+## 🧠 Arquitetura de IA
 
 ```
-Frontend
-React + Vite + Tailwind + React Query
-
-Backend
-Django + Django Ninja API
-```
-
-Estrutura geral:
-
-```
-music-page
-│
-├── backend (Django)
-│   ├── models
-│   ├── API REST
-│   ├── autenticação
-│   ├── notificações
-│   └── seed de dados
-│
-└── frontend (React)
-    ├── feed
-    ├── comunidades
-    ├── artistas
-    ├── comentários
-    └── UI
+User Input
+   ↓
+Embedding (LLaMA-ready)
+   ↓
+Banco vetorial (futuro: pgvector)
+   ↓
+Similarity Search
+   ↓
+Ranking híbrido
+   ↓
+Feed personalizado
 ```
 
 ---
 
-# 🎵 Funcionalidades Implementadas
+## ⚙️ Setup
 
-## 📌 Feed musical
+### 🔧 Backend
 
-- criação de posts de música
-- embeds automáticos
-- suporte a:
-  - YouTube
-  - Spotify
-  - SoundCloud
-- sistema de **upvotes**
-- score de posts
-- comentários
-- salvar posts
-- compartilhamento
-
----
-
-## 👥 Comunidades
-
-Sistema inspirado em **subreddits**.
-
-```
-s/electronic
-s/idm
-s/hiphop
-```
-
-Funcionalidades:
-
-- criar comunidade
-- entrar / sair de comunidades
-- busca de comunidades
-- posts por comunidade
-- sidebar de comunidades
-
----
-
-## 🎧 Grafo Musical
-
-O sistema conecta automaticamente:
-
-```
-Post
- ↓
-Artist
- ↓
-Genre
- ↓
-Community
-```
-
-Exemplo:
-
-```
-Aphex Twin - Windowlicker
-```
-
-gera automaticamente:
-
-```
-Artist: Aphex Twin
-Genre: IDM
-Community: s/idm
-```
-
----
-
-## 👤 Artistas
-
-Páginas automáticas de artista:
-
-```
-/artist/aphex-twin
-```
-
-mostram:
-
-- posts do artista
-- gêneros associados
-- artistas relacionados
-- comunidades relacionadas
-
----
-
-## 🔔 Sistema Social
-
-Implementado:
-
-- comentários
-- notificações
-- perfis de usuário
-- biblioteca de posts salvos
-- status online (last_seen)
-
----
-
-## 📝 Composer de Post
-
-O formulário de criação de post permite:
-
-- título da música
-- URL da música
-- comentário
-- upload de imagem
-- seleção de gênero
-- seleção de comunidade
-
-O backend automaticamente:
-
-- detecta o artista
-- gera embed
-- conecta artista ↔ gênero
-
----
-
-# 🎨 Frontend
-
-Tecnologias:
-
-- React
-- Vite
-- React Query
-- TailwindCSS
-
-Funcionalidades UI:
-
-- modo claro / escuro
-- scroll infinito
-- filtro de posts
-- layout responsivo
-- UI inspirada em Spotify
-
-Filtros disponíveis:
-
-```
-New
-Top
-Trending
-```
-
----
-
-# ⚙️ Backend
-
-Tecnologias:
-
-- Django
-- Django Ninja API
-- PostgreSQL / SQLite
-
-A API fornece endpoints para:
-
-```
-/posts
-/vote
-/comments
-/subs
-/genres
-/artists
-/notifications
-```
-
-Também inclui:
-
-- geração automática de embeds
-- detecção de artista
-- criação automática de gêneros
-- seed de dados para popular a rede
-
----
-
-# 🌱 Seed de Dados
-
-O projeto inclui um comando para popular a rede com posts de música.
-
-Executar:
-
-```
-python manage.py seed_posts
-```
-
-Isso cria:
-
-- posts
-- artistas
-- gêneros
-- comunidades
-
-automaticamente.
-
----
-
-# 💬 Chat da Comunidade
-
-Um chat experimental foi criado para discussão musical e testes da comunidade.
-
-Acesse:
-
-```
-https://musicabrchat.ngrok-free.app
-```
-
-O chat serve para:
-
-- discussão musical
-- sugestões de features
-- testes da comunidade
-
----
-
-# ⚠️ Status de Segurança
-
-O projeto **ainda não está pronto para produção**.
-
-Alguns pontos que ainda precisam de melhoria:
-
-- auditoria de segurança
-- rate limiting
-- proteção contra spam
-- validações adicionais
-- melhorias na autenticação
-
-Por isso o sistema principal ainda **não está hospedado publicamente**.
-
----
-
-# 🚀 Roadmap
-
-Próximas funcionalidades planejadas:
-
-- grafo visual de artistas
-- recomendação automática de música
-- integração com APIs musicais
-- descoberta baseada em grafos
-- playlists comunitárias
-- ranking global de músicas
-
----
-
-# 📂 Instalação
-
-## Backend
-
-```
-git clone https://github.com/goldenluke/music-page.git
-cd music-page
+```bash
 python -m venv venv
 source venv/bin/activate
+
 pip install -r requirements.txt
+
 python manage.py migrate
 python manage.py runserver
 ```
 
 ---
 
-## Frontend
+### 🎨 Frontend
 
-```
+```bash
 cd frontend
 npm install
 npm run dev
@@ -310,38 +268,68 @@ npm run dev
 
 ---
 
-# 📜 Licença
+## 🔐 Variáveis de Ambiente
 
-Copyright (c) 2026  
-**Lucas Amaral Dourado**  
-**João Machado**
+```env
+# YouTube
+YOUTUBE_API_KEY=...
 
-Todos os direitos reservados.
+# Spotify
+SPOTIFY_CLIENT_ID=...
+SPOTIFY_CLIENT_SECRET=...
 
-Este software é propriedade intelectual de **Lucas Amaral Dourado e João Machado**.
-
-O código é disponibilizado publicamente para **fins de estudo, demonstração e colaboração**, porém:
-
-- não pode ser redistribuído comercialmente
-- não pode ser utilizado para criar serviços concorrentes
-- não pode ser vendido ou sublicenciado
-
-sem autorização explícita dos autores.
-
-Para permissões adicionais, entre em contato com os autores.
+# Last.fm
+LASTFM_API_KEY=...
+LASTFM_SECRET=...
+```
 
 ---
 
-# 👨‍💻 Autores
+## 🚀 Deploy
 
-**Lucas Amaral Dourado**  
-Arquitetura do sistema, backend e design do grafo musical.
+### 🌐 Local + Ngrok
 
-**João Machado**  
-Colaboração no desenvolvimento e implementação da plataforma.
+* expõe frontend/backend
+* ideal para testes rápidos
+
+### 🏠 Self-host
+
+* domínio próprio (ex: musicabr.org)
+* nginx + gunicorn (recomendado)
 
 ---
 
-# 🎧 MusicaBR
+## 🔮 Roadmap
 
-Uma tentativa de criar uma **rede social para descoberta musical baseada em grafos e comunidades**.
+* 🧠 LLaMA embeddings reais
+* 📊 pgvector (busca vetorial)
+* 🤖 reinforcement learning
+* 🧪 A/B testing automático
+* 🎧 análise de áudio (BPM, energia)
+* 🎬 autoplay estilo TikTok
+* 📱 app mobile
+
+---
+
+## 💣 Filosofia
+
+> O Music Page não é sobre algoritmo.
+>
+> É sobre construir um **ecossistema musical vivo**,
+> onde IA amplifica — não substitui — o gosto humano.
+
+---
+
+## 👨‍💻 Autor
+
+Lucas Dourado
+Medicina + Engenharia + IA + Saúde Coletiva
+
+---
+
+## ⭐ Contribua
+
+Pull requests são bem-vindos.
+
+Se quiser construir o futuro da descoberta musical:
+👉 bora.
