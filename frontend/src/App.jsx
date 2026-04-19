@@ -10,6 +10,10 @@ import CreatePost from "./components/CreatePost"
 import GenreFilter from "./components/GenreFilter"
 import SkeletonCard from "./components/SkeletonCard"
 import NotificationsDropdown from "./components/NotificationsDropdown"
+import MoodWidget from "./features/musicAI/MoodWidget";
+import AutoPlayerWidget from "./features/musicAI/AutoPlayerWidget";
+import PlaylistWidget from "./features/musicAI/PlaylistWidget";
+
 
 import {
   Music,
@@ -362,6 +366,24 @@ function App() {
 
     </nav>
 
+<div className="mt-10 space-y-6">
+
+  <div className="bg-white/80 dark:bg-[#0f1115] p-4 rounded-2xl border border-white/10">
+    <h4 className="text-xs font-black mb-2 text-green-500">Mood AI</h4>
+    <MoodWidget />
+  </div>
+
+  <div className="bg-white/80 dark:bg-[#0f1115] p-4 rounded-2xl border border-white/10">
+    <h4 className="text-xs font-black mb-2 text-green-500">Autoplay</h4>
+    <AutoPlayerWidget />
+  </div>
+
+  <div className="bg-white/80 dark:bg-[#0f1115] p-4 rounded-2xl border border-white/10">
+    <h4 className="text-xs font-black mb-2 text-green-500">Playlist IA</h4>
+    <PlaylistWidget />
+  </div>
+
+</div>
     </aside>
 
 

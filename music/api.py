@@ -1,3 +1,4 @@
+from .search import search_posts
 from ninja import NinjaAPI, Schema, File, Form
 from ninja.files import UploadedFile
 from ninja.security import django_auth
@@ -404,3 +405,199 @@ def create_sub(request, data: SubIn):
     sub.members.add(request.auth)
     
     return {"id": sub.id, "slug": sub.slug}
+
+# --- ANALYTICS ---
+from .analytics import get_analytics
+
+@api.get('/analytics')
+def analytics(request):
+    return get_analytics()
+
+
+# --- A/B TEST FEED ---
+from .abtest import assign_group
+from .pipeline import get_recommended_posts
+
+@api.get("/feed/ab", auth=django_auth)
+def ab_feed(request):
+    group = assign_group(request.auth)
+
+    if group == "A":
+        posts = Post.objects.order_by("-score")[:20]
+    else:
+        posts = get_recommended_posts(request.auth)
+
+    return {
+        "group": group,
+        "posts": posts
+    }
+
+# --- TRACK EVENT ---
+from .models import UserEvent
+from django.shortcuts import get_object_or_404
+
+@api.post("/events", auth=django_auth)
+def track_event(request, post_id: int, event_type: str):
+    post = get_object_or_404(Post, id=post_id)
+
+    UserEvent.objects.create(
+        user=request.auth,
+        post=post,
+        event_type=event_type
+    )
+
+    return {"success": True}
+
+# --- SEARCH ---
+@api.get("/search")
+def search(request, q: str):
+    posts = search_posts(q)
+    return posts
+
+from .search import search_posts, autocomplete
+
+@api.get("/search")
+def search(request, q: str):
+    return search_posts(q)
+
+@api.get("/autocomplete")
+def autocomplete_api(request, q: str):
+    return autocomplete(q)
+
+from .semantic_search import semantic_search
+
+@api.get("/semantic-search")
+def semantic_search_api(request, q: str):
+    return semantic_search(q)
+
+from .recommender import smart_feed
+
+@api.get("/feed/ai", auth=django_auth)
+def ai_feed(request):
+    return smart_feed(request.auth)
+
+from .recommender import smart_feed
+
+@api.get("/feed/hybrid", auth=django_auth)
+def smart_feed_api(request):
+    return smart_feed(request.auth)
+
+from .recommender import smart_feed
+
+@api.get("/feed/smart", auth=django_auth)
+def smart_feed_api(request):
+    return smart_feed(request.auth)
+
+@api.post("/event")
+def track_event(request, post_id: int, event_type: str):
+    from .models import Post, UserEvent
+
+    post = Post.objects.get(id=post_id)
+
+    UserEvent.objects.create(
+        user=request.auth,
+        post=post,
+        event_type=event_type
+    )
+
+    # aprendizado simples: atualizar score
+    if event_type == "upvote":
+        post.score += 1
+        post.save()
+
+    return {"status": "ok"}
+
+from .rl import update_weights
+from .ab import assign_variant
+from .recommender import smart_feed
+
+@api.get("/feed/rl", auth=django_auth)
+def rl_feed(request):
+    variant = assign_variant(request.auth)
+
+    # pode trocar algoritmo aqui no futuro
+    feed = smart_feed(request.auth)
+
+    return {
+        "variant": variant,
+        "results": feed
+    }
+
+@api.post("/event")
+def track_event(request, post_id: int, event_type: str):
+    from .models import Post, UserEvent
+
+    post = Post.objects.get(id=post_id)
+
+    UserEvent.objects.create(
+        user=request.auth,
+        post=post,
+        event_type=event_type
+    )
+
+    # RL UPDATE 🔥
+    update_weights(event_type)
+
+    if event_type == "upvote":
+        post.score += 1
+        post.save()
+
+    return {"status": "learning"}
+
+from .youtube import search_youtube, ingest_youtube
+
+@api.get("/youtube/search")
+def yt_search(request, q: str):
+    return search_youtube(q)
+
+@api.post("/youtube/ingest")
+def yt_ingest(request, q: str):
+    return ingest_youtube(q)
+
+from .playlist import generate_playlist, next_track
+
+@api.get("/playlist/ai", auth=django_auth)
+def ai_playlist(request):
+    return generate_playlist(request.auth)
+
+@api.get("/autoplay/next", auth=django_auth)
+def autoplay_next(request):
+    return next_track(request.auth)
+
+from .spotify import search_spotify
+
+@api.get("/spotify/search")
+def spotify_search(request, q: str):
+    return search_spotify(q)
+
+from .hybrid import hybrid_playlist, rank_playlist
+
+@api.get("/playlist/hybrid")
+def hybrid_playlist_api(request, q: str):
+    items = hybrid_playlist(q)
+    ranked = rank_playlist(q, items)
+    return ranked
+
+from .multimodal import multimodal_feed
+
+@api.get("/feed/multimodal", auth=django_auth)
+def multimodal_feed_api(request):
+    return multimodal_feed(request.auth)
+
+from .tags import enrich_tags
+
+@api.post("/lastfm/enrich")
+def lastfm_enrich(request):
+    enrich_tags()
+    return {"status": "ok"}
+
+from .mood import mood_search
+from .graph import related
+
+@api.get("/mood")
+def mood_api(request, q: str):
+    return mood_search(q)
+
+@api.get("/graph")
+def graph_api(request, node: str):
+    return related(node)

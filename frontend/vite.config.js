@@ -19,13 +19,13 @@ export default defineConfig({
                               proxy: {
                                 // API Django
                                 '/api': {
-                                  target: 'http://127.0.0.1:8001',
+                                  target: 'http://127.0.0.1:8000',
                             changeOrigin: true,
                                 },
 
                             // Arquivos de mídia do Django
                             '/media': {
-                              target: 'http://127.0.0.1:8001',
+                              target: 'http://127.0.0.1:8000',
                             changeOrigin: true,
                             }
                               }
